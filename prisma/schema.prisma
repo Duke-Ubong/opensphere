@@ -1,0 +1,76 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(uuid())
+  username         String   @unique
+  email            String   @unique
+  professional_bio String?
+  is_verified      Boolean  @default(false)
+  exposure_dial    Int      @default(50)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  posts            Post[]
+  lounges          Lounge[] @relation("LoungeCreator")
+}
+
+model Lounge {
+  id               String   @id @default(uuid())
+  creator_id       String
+  name             String
+  skill_thresholds Json     // Stores required skills and minimum scores
+  is_temporary     Boolean  @default(false) // For "burn-on-close" OTR rooms
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  creator          User     @relation("LoungeCreator", fields: [creator_id], references: [id])
+}
+
+enum PostType {
+  VIBE
+  GIG
+  SYSTEM
+}
+
+model Post {
+  id              String   @id @default(uuid())
+  author_id       String
+  type            PostType
+  content         String?
+  title           String?
+  category        String?
+  tag             String?
+  is_uncensored   Boolean  @default(false)
+  intensity_score Int      @default(0)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  author          User     @relation(fields: [author_id], references: [id])
+  attachments     Attachment[]
+}
+
+enum AttachmentType {
+  IMAGE
+  PDF
+  VIDEO
+}
+
+model Attachment {
+  id         String         @id @default(uuid())
+  post_id    String
+  url        String
+  type       AttachmentType
+  created_at DateTime       @default(now())
+
+  post       Post           @relation(fields: [post_id], references: [id])
+}
