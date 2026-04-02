@@ -9,29 +9,63 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // In-memory DB representing the FastAPI User Model
-  let currentUser = {
-    id: '123e4567-e89b-12d3-a456-426614174000',
-    username: 'marcus_vance',
-    email: 'marcus@opensphere.io',
-    professional_bio: 'Principal Architect @ OpenSphere. Building the future of vibe-coded systems. Ex-Google, Ex-Meta.',
-    is_verified: true,
-    exposure_dial: 75,
-    nodes: 1242,
-    trust_score: 98,
-    credentials: [
-      { id: '1', title: 'Senior Systems Architect', issuer: 'OpenSphere', date: '2024' },
-      { id: '2', title: 'Distributed Systems Specialization', issuer: 'Stanford', date: '2023' }
-    ],
-    documents: [
-      { id: '1', title: 'Q4 Performance Audit', category: 'Certifications', date: '2024-12-15', status: 'VERIFIED', tags: ['Performance', 'Audit'] },
-      { id: '2', title: 'Distributed Ledger Patent', category: 'Publications', date: '2024-10-20', status: 'VERIFIED', tags: ['Blockchain', 'Patent'] },
-      { id: '3', title: 'OpenSphere Core Architecture', category: 'Research', date: '2024-08-05', status: 'VERIFIED', tags: ['Architecture', 'Core'] }
-    ]
-  };
+  let users: any[] = [
+    {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      username: 'marcus_vance',
+      email: 'marcus@opensphere.io',
+      password: 'password123',
+      professional_bio: 'Principal Architect @ OpenSphere. Building the future of vibe-coded systems. Ex-Google, Ex-Meta.',
+      occupation: 'Systems Architect',
+      is_verified: true,
+      exposure_dial: 75,
+      nodes: 1242,
+      trust_score: 98,
+      following: [] as string[],
+      is_synthetic: false,
+      avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDCOWJ5vZEovondagcWGriDKF5gytHqkiFpqOXiKOfy1Tni5G8a7lVjfW-EWggSDJuumPqN2dAQga2N-YT6gA4CrP-qX_I52u-0woFdq9dDLfhsk1HshhH6v0GZAyBnysdTlHjZwoCxuBIzAP2EqND_q8lGS7tXREUaBg-QcLs8m3nkAOa-a254ival6t9EfDvrwrH5oeD_mfOsYwf5vg_zmYgQ2Z5ivEwNu1nTbfFpMj50Yt_es5P2aVYFq5LhuowjdJUxBNGHEaUB',
+      credentials: [
+        { id: '1', title: 'Senior Systems Architect', issuer: 'OpenSphere', date: '2024' },
+        { id: '2', title: 'Distributed Systems Specialization', issuer: 'Stanford', date: '2023' }
+      ],
+      documents: [
+        { id: '1', title: 'Q4 Performance Audit', category: 'Certifications', date: '2024-12-15', status: 'VERIFIED', tags: ['Performance', 'Audit'] },
+        { id: '2', title: 'Distributed Ledger Patent', category: 'Publications', date: '2024-10-20', status: 'VERIFIED', tags: ['Blockchain', 'Patent'] },
+        { id: '3', title: 'OpenSphere Core Architecture', category: 'Research', date: '2024-08-05', status: 'VERIFIED', tags: ['Architecture', 'Core'] }
+      ]
+    }
+  ];
+
+  // Generate Synthetic Users
+  const occupations = ['DeFi Researcher', 'Rust Engineer', 'Venture Partner', 'AI Ethicist', 'Protocol Architect', 'Quant Trader'];
+  const names = ['Sarah Koto', 'Elena Thorne', 'Alex Rivet', 'Jordan Byte', 'Morgan Flux', 'Casey Node'];
+  
+  names.forEach((name, i) => {
+    users.push({
+      id: `synthetic-${i}`,
+      username: name.toLowerCase().replace(/\s+/g, '_'),
+      email: `${name.toLowerCase().replace(/\s+/g, '.')}@synthetic.io`,
+      password: 'password123',
+      professional_bio: `Synthetic expert in ${occupations[i]}. Exploring the boundaries of ProRaw networking.`,
+      occupation: occupations[i],
+      is_verified: Math.random() > 0.5,
+      exposure_dial: Math.floor(Math.random() * 100),
+      nodes: Math.floor(Math.random() * 5000),
+      trust_score: Math.floor(Math.random() * 40) + 60,
+      following: [],
+      is_synthetic: true,
+      avatar: `https://picsum.photos/seed/${name}/200/200`,
+      credentials: [],
+      documents: []
+    });
+  });
+
+  let currentUser = users[0];
 
   let posts: any[] = [
     {
       id: 1,
+      authorId: 'user-1',
       authorName: 'Marcus Vane',
       author: '@VANE_OPS',
       time: '2m ago',
@@ -44,6 +78,7 @@ async function startServer() {
     },
     {
       id: 2,
+      authorId: 'user-2',
       authorName: 'Elena Thorne',
       author: '@THORNE_DEV',
       time: '15m ago',
@@ -57,12 +92,14 @@ async function startServer() {
     },
     {
       id: 10,
+      authorId: 'system',
       type: 'SYSTEM',
       title: 'MARKET_PULSE_ALERT',
       content: 'ETH/USD VOLATILITY SPIKE +4.2%\nLIQUIDATION_EVENT_ID: 99283-X\nNODE_HEALTH: 99.98%'
     },
     {
       id: 5,
+      authorId: 'user-3',
       authorName: 'Sarah Koto',
       author: '@KOTO_ALPHA',
       time: '42m ago',
@@ -74,6 +111,7 @@ async function startServer() {
     },
     {
       id: 6,
+      authorId: 'user-4',
       authorName: 'CEO Hustle',
       author: '@ceo_hustle',
       time: '1h ago',
@@ -84,6 +122,7 @@ async function startServer() {
     },
     {
       id: 3,
+      authorId: 'system',
       authorName: 'System Log',
       author: '@system_log',
       title: 'Recursive Consensus in Heterogeneous Networks',
@@ -95,6 +134,7 @@ async function startServer() {
     },
     {
       id: 4,
+      authorId: 'system',
       authorName: 'System Log',
       author: '@system_log',
       title: 'Q3 Growth Ecosystem Report',
@@ -108,6 +148,61 @@ async function startServer() {
 
   app.get('/api/users/me', (req, res) => {
     res.json(currentUser);
+  });
+
+  app.post('/api/auth/signup', (req, res) => {
+    const { username, email, password, occupation, bio } = req.body;
+    if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already exists' });
+    
+    const newUser = {
+      id: Math.random().toString(36).substring(7),
+      username,
+      email,
+      password,
+      occupation: occupation || 'Professional',
+      professional_bio: bio || '',
+      is_verified: false,
+      exposure_dial: 50,
+      nodes: 0,
+      trust_score: 50,
+      following: [],
+      is_synthetic: false,
+      avatar: `https://picsum.photos/seed/${username}/200/200`,
+      credentials: [],
+      documents: []
+    };
+    users.push(newUser);
+    currentUser = newUser;
+    res.status(201).json(newUser);
+  });
+
+  app.post('/api/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    const user = users.find(u => u.email === email && u.password === password);
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    currentUser = user;
+    res.json(user);
+  });
+
+  app.get('/api/search', (req, res) => {
+    const { q } = req.query;
+    if (!q) return res.json({ users: [], posts: [] });
+    const query = (q as string).toLowerCase();
+    
+    const userResults = users.filter(u => 
+      u.username.toLowerCase().includes(query) || 
+      u.occupation?.toLowerCase().includes(query) ||
+      u.professional_bio?.toLowerCase().includes(query)
+    );
+
+    const postResults = posts.filter(p => 
+      (p.content && p.content.toLowerCase().includes(query)) ||
+      (p.title && p.title.toLowerCase().includes(query)) ||
+      (p.description && p.description.toLowerCase().includes(query)) ||
+      (p.category && p.category.toLowerCase().includes(query))
+    );
+
+    res.json({ users: userResults, posts: postResults });
   });
 
   app.post('/api/documents', (req, res) => {
@@ -179,6 +274,28 @@ async function startServer() {
 
   app.get('/api/posts', (req, res) => {
     res.json(posts);
+  });
+
+  app.post('/api/follow', (req, res) => {
+    const { targetId } = req.body;
+    if (!targetId) return res.status(400).json({ error: 'Target ID required' });
+    
+    if (currentUser.following.includes(targetId)) {
+      currentUser.following = currentUser.following.filter(id => id !== targetId);
+    } else {
+      currentUser.following.push(targetId);
+    }
+    res.json({ following: currentUser.following });
+  });
+
+  app.get('/api/feed', (req, res) => {
+    // Personalized feed: posts from followed users + system posts
+    const feed = posts.filter(post => 
+      post.authorId === 'system' || 
+      post.authorId === currentUser.id || 
+      currentUser.following.includes(post.authorId)
+    );
+    res.json(feed);
   });
 
   app.post('/api/posts', async (req, res) => {
@@ -286,6 +403,35 @@ async function startServer() {
     // Broadcast presence when someone joins
     broadcastPresence();
 
+    // Simulate Synthetic Activity in Lounge
+    const syntheticUsers = users.filter(u => u.is_synthetic);
+    const simulationInterval = setInterval(() => {
+      if (room.size > 0 && Math.random() > 0.7) {
+        const randomSynthetic = syntheticUsers[Math.floor(Math.random() * syntheticUsers.length)];
+        const messages = [
+          "Interesting perspective on the protocol layer.",
+          "Has anyone looked at the latest L3 benchmarks?",
+          "The vibe in this lounge is high-tier.",
+          "Scaling is definitely the bottleneck right now.",
+          "Just finished a research paper on recursive consensus."
+        ];
+        const outMsg = JSON.stringify({
+          type: 'chat',
+          message: {
+            id: Math.random().toString(36).substring(7),
+            author: randomSynthetic.username,
+            content: messages[Math.floor(Math.random() * messages.length)],
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            expiresAt: null,
+            isOtr: false
+          }
+        });
+        room.forEach(c => {
+          if (c.ws.readyState === WebSocket.OPEN) c.ws.send(outMsg);
+        });
+      }
+    }, 15000); // Every 15 seconds
+
     // Send system message for join
     const joinMsg = JSON.stringify({
       type: 'system',
@@ -340,6 +486,7 @@ async function startServer() {
     });
 
     ws.on('close', () => {
+      clearInterval(simulationInterval);
       room.delete(clientData);
       broadcastPresence();
       

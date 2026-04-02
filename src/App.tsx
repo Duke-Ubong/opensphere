@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, MessageSquare, RefreshCw, Heart, Monitor, Zap, Lightbulb, User, BarChart2, DollarSign, Settings, HelpCircle, LogOut, Grid, Plus, Menu, X, Shield, ChevronLeft, ChevronRight, Search, Bell, Database, CheckCircle2, Radio, Briefcase, Store, ShieldCheck } from 'lucide-react';
+import { Edit2, MessageSquare, RefreshCw, Heart, Monitor, Zap, Lightbulb, User, BarChart2, DollarSign, Settings, HelpCircle, LogOut, Grid, Plus, Menu, X, Shield, ChevronLeft, ChevronRight, Search, Bell, Database, CheckCircle2, Radio, Briefcase, Store, ShieldCheck, ArrowLeft } from 'lucide-react';
 import GigsRepo from './components/GigsRepo';
 import CreatePostModal from './components/CreatePostModal';
 import LoungeView from './components/LoungeView';
@@ -17,12 +17,14 @@ interface UserData {
   exposure_dial: number;
   nodes: number;
   trust_score: number;
+  following: string[];
   credentials: Array<{ id: string; title: string; issuer: string; date: string }>;
   documents: Array<{ id: string; title: string; category: string; date: string; status: string; tags: string[] }>;
 }
 
 interface Post {
   id: number;
+  authorId?: string;
   type: 'VIBE' | 'GIG' | 'SYSTEM';
   isUncensored?: boolean;
   // VIBE fields
@@ -41,7 +43,7 @@ interface Post {
   image?: string;
 }
 
-const PostCard: React.FC<{ post: Post }> = ({ post }) => {
+const PostCard: React.FC<{ post: Post, currentUser: UserData | null, onFollowToggle: (targetId: string) => void }> = ({ post, currentUser, onFollowToggle }) => {
   const isVibe = post.type === 'VIBE';
   const isSystem = post.type === 'SYSTEM';
   
@@ -50,6 +52,9 @@ const PostCard: React.FC<{ post: Post }> = ({ post }) => {
   const [isReVibed, setIsReVibed] = useState(false);
   const [reVibesCount, setReVibesCount] = useState(post.stats?.reVibes || 0);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const isFollowing = currentUser?.following.includes(post.authorId || '');
+  const isMe = currentUser?.id === post.authorId;
 
   const handleLike = () => {
     if (isLiked) {
@@ -106,7 +111,17 @@ const PostCard: React.FC<{ post: Post }> = ({ post }) => {
             {isVibe ? <Zap className="w-5 h-5 text-primary-container" /> : <Lightbulb className="w-5 h-5 text-primary-container" />}
           </div>
           <div>
-            <div className="font-bold text-on-surface text-sm">{post.authorName || 'User'}</div>
+            <div className="font-bold text-on-surface text-sm flex items-center gap-2">
+              {post.authorName || 'User'}
+              {!isMe && !isSystem && post.authorId && (
+                <button 
+                  onClick={() => onFollowToggle(post.authorId!)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${isFollowing ? 'border-primary-container text-primary-container' : 'border-outline text-outline hover:border-primary-container hover:text-primary-container'}`}
+                >
+                  {isFollowing ? 'FOLLOWING' : '+ FOLLOW'}
+                </button>
+              )}
+            </div>
             <div className="text-xs text-outline">{post.author || '@user'}</div>
           </div>
         </div>
@@ -189,6 +204,11 @@ export default function App() {
   const [showUncensored, setShowUncensored] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoungeOpen, setIsLoungeOpen] = useState(false);
+  const [feedType, setFeedType] = useState<'all' | 'following'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ users: UserData[], posts: Post[] }>({ users: [], posts: [] });
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Edit Profile State
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -246,11 +266,47 @@ export default function App() {
     }
   };
 
+  const handleFollowToggle = async (targetId: string) => {
+    const res = await fetch('/api/follow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (user) {
+        setUser({ ...user, following: data.following });
+        toast(data.following.includes(targetId) ? 'Following user' : 'Unfollowed user');
+      }
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (query.length < 2) {
+      setSearchResults({ users: [], posts: [] });
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSearchResults(data);
+      }
+    } catch (err) {
+      console.error('Search failed', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   // Filtering logic:
-  // Gigs are always visible. Vibe posts are filtered based on uncensored toggle.
+  // Gigs are always visible. Vibe posts are filtered based on uncensored toggle and feed type.
   const visiblePosts = posts.filter(post => {
     if (post.type === 'GIG') return true;
     if (post.isUncensored && !showUncensored) return false;
+    if (feedType === 'following' && post.authorId !== 'system' && post.authorId !== user?.id && !user?.following.includes(post.authorId || '')) return false;
     return true;
   });
 
@@ -262,7 +318,10 @@ export default function App() {
       <Toaster theme="dark" position="top-right" />
       {showWelcome ? (
         <motion.div key="welcome" exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }} transition={{ duration: 0.8, ease: "easeInOut" }}>
-          <WelcomeScreen onInitialize={() => setShowWelcome(false)} />
+          <WelcomeScreen onInitialize={(userData) => {
+            setUser(userData);
+            setShowWelcome(false);
+          }} />
         </motion.div>
       ) : (
         <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1, delay: 0.2 }} className="min-h-screen bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-fixed flex flex-col">
@@ -277,10 +336,115 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center bg-surface-container-lowest px-3 py-1.5 rounded-lg border-b border-primary-container/30">
+          {/* Desktop Search */}
+          <div className="hidden sm:flex items-center bg-surface-container-lowest px-3 py-1.5 rounded-lg border-b border-primary-container/30 relative">
             <Search className="w-4 h-4 text-outline mr-2" />
-            <input className="bg-transparent border-none focus:outline-none text-sm font-label uppercase tracking-widest text-on-surface-variant placeholder:text-outline/50 w-48" placeholder="Search Terminal..." type="text" />
+            <input 
+              className="bg-transparent border-none focus:outline-none text-sm font-label uppercase tracking-widest text-on-surface-variant placeholder:text-outline/50 w-48" 
+              placeholder="Search Terminal..." 
+              type="text" 
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+            />
+            
+            <AnimatePresence>
+              {searchQuery.length >= 2 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute top-full right-0 w-[400px] mt-2 bg-surface-container-highest border border-outline-variant rounded-xl shadow-2xl z-[100] overflow-hidden"
+                >
+                  <div className="p-2 max-h-[500px] overflow-y-auto custom-scrollbar">
+                    {isSearching ? (
+                      <div className="p-4 text-center text-xs text-outline animate-pulse font-label uppercase tracking-widest">Scanning network...</div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Users Section */}
+                        {searchResults.users.length > 0 && (
+                          <div>
+                            <div className="px-3 py-1 text-[10px] font-black text-primary-container uppercase tracking-[0.2em] border-b border-outline-variant/10 mb-2">Nodes Found</div>
+                            {searchResults.users.map(result => (
+                              <div 
+                                key={result.id}
+                                className="flex items-center justify-between p-3 hover:bg-white/5 rounded-lg transition-colors group cursor-pointer"
+                                onClick={() => {
+                                  setCurrentView('profile');
+                                  setSearchQuery('');
+                                }}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <img 
+                                    src={result.avatar || `https://picsum.photos/seed/${result.username}/40/40`} 
+                                    className="w-8 h-8 rounded-full border border-outline-variant"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold text-on-surface flex items-center gap-1 truncate">
+                                      {result.username}
+                                      {result.is_verified && <div className="w-1.5 h-1.5 bg-[#00FFAB] rounded-full" />}
+                                    </div>
+                                    <div className="text-[8px] text-outline uppercase tracking-wider truncate">{result.occupation}</div>
+                                  </div>
+                                </div>
+                                {result.id !== user?.id && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleFollowToggle(result.id);
+                                    }}
+                                    className={`text-[8px] px-2 py-0.5 rounded-full border transition-all uppercase font-bold ${user?.following.includes(result.id) ? 'border-[#00FFAB] text-[#00FFAB] bg-[#00FFAB]/10' : 'border-outline text-outline hover:border-[#00FFAB] hover:text-[#00FFAB]'}`}
+                                  >
+                                    {user?.following.includes(result.id) ? 'FOLLOWING' : '+ FOLLOW'}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Posts/Gigs Section */}
+                        {searchResults.posts.length > 0 && (
+                          <div>
+                            <div className="px-3 py-1 text-[10px] font-black text-primary-container uppercase tracking-[0.2em] border-b border-outline-variant/10 mb-2">Transmissions</div>
+                            {searchResults.posts.map(post => (
+                              <div 
+                                key={post.id}
+                                className="p-3 hover:bg-white/5 rounded-lg transition-colors group cursor-pointer border-l-2 border-transparent hover:border-primary-container"
+                                onClick={() => {
+                                  setSearchQuery('');
+                                }}
+                              >
+                                <div className="flex justify-between items-start mb-1">
+                                  <span className="text-[8px] font-bold text-primary-container uppercase tracking-widest">{post.type}</span>
+                                  <span className="text-[8px] text-outline">{post.time || 'RECENT'}</span>
+                                </div>
+                                <div className="text-[10px] font-bold text-on-surface line-clamp-1">{post.title || post.authorName}</div>
+                                <div className="text-[10px] text-outline line-clamp-2 mt-1 leading-relaxed">{post.content || post.description}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {searchResults.users.length === 0 && searchResults.posts.length === 0 && (
+                          <div className="p-4 text-center text-xs text-outline font-label uppercase tracking-widest">No results found.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+
+          {/* Mobile Search Trigger */}
+          <button 
+            onClick={() => setIsSearchOpen(true)}
+            className="sm:hidden p-2 text-outline hover:text-primary transition-colors"
+          >
+            <Search className="w-5 h-5" />
+          </button>
+
           <div className="flex gap-3 text-[#E5E2E1]">
             <Bell onClick={() => toast('No new notifications')} className="w-5 h-5 hover:text-[#00FFAB] cursor-pointer transition-colors" />
             <MessageSquare onClick={() => setIsLoungeOpen(true)} className="w-5 h-5 hover:text-[#00FFAB] cursor-pointer transition-colors" />
@@ -288,6 +452,125 @@ export default function App() {
           </div>
         </div>
       </nav>
+
+      {/* Mobile Search Overlay */}
+      <AnimatePresence>
+        {isSearchOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-[#131313] z-[200] flex flex-col"
+          >
+            <div className="p-4 flex items-center gap-4 border-b border-outline-variant/10">
+              <button 
+                onClick={() => {
+                  setIsSearchOpen(false);
+                  setSearchQuery('');
+                  setSearchResults({ users: [], posts: [] });
+                }}
+                className="p-2 text-outline hover:text-white"
+              >
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
+                <input 
+                  autoFocus
+                  className="w-full bg-surface-container-high border border-outline-variant rounded-full py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary"
+                  placeholder="Search network..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              {isSearching ? (
+                <div className="p-8 text-center text-xs text-outline animate-pulse font-label uppercase tracking-widest">Scanning network...</div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Users Section */}
+                  {searchResults.users.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1 text-[10px] font-black text-primary-container uppercase tracking-[0.2em] border-b border-outline-variant/10 mb-4">Nodes Found</div>
+                      <div className="space-y-2">
+                        {searchResults.users.map(result => (
+                          <div 
+                            key={result.id}
+                            className="flex items-center justify-between p-4 bg-surface-container-low rounded-xl border border-outline-variant/10"
+                            onClick={() => {
+                              setCurrentView('profile');
+                              setIsSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <div className="flex items-center gap-4">
+                              <img 
+                                src={result.avatar || `https://picsum.photos/seed/${result.username}/40/40`} 
+                                className="w-12 h-12 rounded-full border border-outline-variant"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div>
+                                <div className="text-sm font-bold text-on-surface flex items-center gap-2">
+                                  {result.username}
+                                  {result.is_verified && <div className="w-2 h-2 bg-[#00FFAB] rounded-full" />}
+                                </div>
+                                <div className="text-[10px] text-outline uppercase tracking-wider">{result.occupation}</div>
+                              </div>
+                            </div>
+                            {result.id !== user?.id && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleFollowToggle(result.id);
+                                }}
+                                className={`text-[10px] px-4 py-1.5 rounded-full border transition-all uppercase font-bold ${user?.following.includes(result.id) ? 'border-[#00FFAB] text-[#00FFAB] bg-[#00FFAB]/10' : 'border-outline text-outline'}`}
+                              >
+                                {user?.following.includes(result.id) ? 'FOLLOWING' : '+ FOLLOW'}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Posts/Gigs Section */}
+                  {searchResults.posts.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1 text-[10px] font-black text-primary-container uppercase tracking-[0.2em] border-b border-outline-variant/10 mb-4">Transmissions</div>
+                      <div className="space-y-3">
+                        {searchResults.posts.map(post => (
+                          <div 
+                            key={post.id}
+                            className="p-4 bg-surface-container-low rounded-xl border border-outline-variant/10"
+                            onClick={() => {
+                              setIsSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-[10px] font-bold text-primary-container uppercase tracking-widest">{post.type}</span>
+                              <span className="text-[10px] text-outline">{post.time || 'RECENT'}</span>
+                            </div>
+                            <div className="text-sm font-bold text-on-surface mb-1">{post.title || post.authorName}</div>
+                            <div className="text-xs text-outline line-clamp-3 leading-relaxed">{post.content || post.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {searchQuery.length >= 2 && searchResults.users.length === 0 && searchResults.posts.length === 0 && !isSearching && (
+                    <div className="p-12 text-center text-xs text-outline font-label uppercase tracking-widest">No results found in the network.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-1">
         {/* SideNavBar */}
@@ -368,7 +651,20 @@ export default function App() {
               <header className="mb-6 flex justify-between items-end">
                 <div>
                   <h2 className="font-headline text-2xl font-black text-primary tracking-tighter">VIBES</h2>
-                  <p className="font-label text-xs text-primary-container tracking-widest uppercase">Quick Thoughts // Vibe</p>
+                  <div className="flex gap-4 mt-1">
+                    <button 
+                      onClick={() => setFeedType('all')}
+                      className={`font-label text-[10px] uppercase tracking-widest transition-colors ${feedType === 'all' ? 'text-[#00FFAB]' : 'text-primary-container hover:text-[#00FFAB]'}`}
+                    >
+                      All
+                    </button>
+                    <button 
+                      onClick={() => setFeedType('following')}
+                      className={`font-label text-[10px] uppercase tracking-widest transition-colors ${feedType === 'following' ? 'text-[#00FFAB]' : 'text-primary-container hover:text-[#00FFAB]'}`}
+                    >
+                      Following
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-label text-[10px] uppercase tracking-widest text-secondary">Uncensored</span>
@@ -383,7 +679,7 @@ export default function App() {
               <div className="space-y-4">
                 <AnimatePresence>
                 {vibePosts.map(post => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard key={post.id} post={post} currentUser={user} onFollowToggle={handleFollowToggle} />
                 ))}
                 </AnimatePresence>
                 {vibePosts.length === 0 && (
@@ -406,7 +702,7 @@ export default function App() {
               <div className="grid grid-cols-1 gap-4">
                 <AnimatePresence>
                 {gigPosts.map(post => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard key={post.id} post={post} currentUser={user} onFollowToggle={handleFollowToggle} />
                 ))}
                 </AnimatePresence>
               </div>
@@ -431,7 +727,7 @@ export default function App() {
               </header>
               <div className="space-y-4">
                 <AnimatePresence>
-                {visiblePosts.map(post => <PostCard key={post.id} post={post} />)}
+                {visiblePosts.map(post => <PostCard key={post.id} post={post} currentUser={user} onFollowToggle={handleFollowToggle} />)}
                 </AnimatePresence>
                 {visiblePosts.length === 0 && (
                   <div className="text-center p-8 text-outline font-label text-sm">
