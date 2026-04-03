@@ -279,12 +279,12 @@ export default function App() {
         seedDatabase(); // Ensure mock data exists
         unsubscribeUser = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
           if (docSnap.exists()) {
-            setUser(docSnap.data() as UserData);
+            setUser({ id: docSnap.id, ...docSnap.data() } as UserData);
           } else {
             // Fallback to mock user if not found in db but logged in (test login)
             getDoc(doc(db, 'users', 'user-1')).then(mockUserDoc => {
               if (mockUserDoc.exists()) {
-                setUser(mockUserDoc.data() as UserData);
+                setUser({ id: mockUserDoc.id, ...mockUserDoc.data() } as UserData);
               }
             });
           }
@@ -406,6 +406,8 @@ export default function App() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setConversations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching conversations:", error);
     });
     return () => unsubscribe();
   }, [user]);
