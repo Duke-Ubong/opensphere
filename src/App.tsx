@@ -10,8 +10,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 
 // Firebase imports
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { db } from './firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp, getDoc, deleteDoc, where, limit, setDoc } from 'firebase/firestore';
 
 // Types
@@ -269,22 +268,18 @@ export default function App() {
   useEffect(() => {
     let unsubscribeUser: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (unsubscribeUser) {
-        unsubscribeUser();
-        unsubscribeUser = null;
-      }
-
-      if (firebaseUser) {
+    const checkLocalAuth = () => {
+      const localUserId = localStorage.getItem('test_user_id');
+      if (localUserId) {
         seedDatabase(); // Ensure mock data exists
-        unsubscribeUser = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
+        unsubscribeUser = onSnapshot(doc(db, 'users', localUserId), (docSnap) => {
           if (docSnap.exists()) {
-            setUser({ id: docSnap.id, ...docSnap.data() } as UserData);
+            setUser(docSnap.data() as UserData);
           } else {
             // Fallback to mock user if not found in db but logged in (test login)
             getDoc(doc(db, 'users', 'user-1')).then(mockUserDoc => {
               if (mockUserDoc.exists()) {
-                setUser({ id: mockUserDoc.id, ...mockUserDoc.data() } as UserData);
+                setUser(mockUserDoc.data() as UserData);
               }
             });
           }
@@ -295,10 +290,11 @@ export default function App() {
         setUser(null);
         setShowWelcome(true);
       }
-    });
+    };
+
+    checkLocalAuth();
 
     return () => {
-      unsubscribeAuth();
       if (unsubscribeUser) {
         unsubscribeUser();
       }
@@ -406,8 +402,6 @@ export default function App() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setConversations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      console.error("Error fetching conversations:", error);
     });
     return () => unsubscribe();
   }, [user]);
@@ -447,9 +441,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    signOut(auth).then(() => {
-      setShowWelcome(true);
-    });
+    localStorage.removeItem('test_user_id');
+    setUser(null);
+    setShowWelcome(true);
   };
 
   // Filtering logic:
