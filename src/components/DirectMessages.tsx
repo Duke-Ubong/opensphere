@@ -56,6 +56,8 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)));
+    }, (error) => {
+      console.error("Error fetching messages:", error);
     });
 
     // Fetch other user info

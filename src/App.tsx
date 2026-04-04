@@ -100,6 +100,8 @@ const PostCard: React.FC<{
       const q = query(collection(db, 'posts', post.id, 'comments'), orderBy('createdAt', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment)));
+      }, (error) => {
+        console.error("Error in comments snapshot:", error);
       });
       return () => unsubscribe();
     }
@@ -525,6 +527,8 @@ export default function App() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setConversations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error in conversations snapshot:", error);
     });
     return () => unsubscribe();
   }, [user]);
