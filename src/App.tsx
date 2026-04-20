@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Edit2, MessageSquare, RefreshCw, Heart, Monitor, Zap, Lightbulb, User, BarChart2, DollarSign, Settings, HelpCircle, LogOut, Grid, Plus, Menu, X, Shield, ChevronLeft, ChevronRight, Search, Bell, Database, CheckCircle2, Radio, Briefcase, Store, ShieldCheck, Trash2, Send, FileText, Sun, Moon, Home, Users, Mail } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Edit2, MessageSquare, RefreshCw, Heart, Monitor, Zap, Lightbulb, User, BarChart2, DollarSign, Settings, HelpCircle, LogOut, Grid, Plus, Menu, X, Shield, ChevronLeft, ChevronRight, Search, Bell, Database, CheckCircle2, Radio, Briefcase, Store, ShieldCheck, Trash2, Send, FileText, Sun, Moon, Home, Users, Mail, MapPin, Globe, Globe2, Camera } from 'lucide-react';
 import GigsRepo from './components/GigsRepo';
 import CreatePostModal from './components/CreatePostModal';
 import LoungeView from './components/LoungeView';
@@ -32,6 +32,8 @@ interface UserData {
   profileImage?: string;
   location?: string;
   website?: string;
+  exposure_dial?: number;
+  competencies?: string[];
   credentials: Array<{ id: string; title: string; issuer: string; date: string }>;
   documents: Array<{ id: string; title: string; category: string; date: string; status: string; tags: string[] }>;
 }
@@ -380,12 +382,62 @@ export default function App() {
   const [editBio, setEditBio] = useState('');
   const [editIsVerified, setEditIsVerified] = useState(false);
   const [editProfileImage, setEditProfileImage] = useState('');
+  const [editBannerImage, setEditBannerImage] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editWebsite, setEditWebsite] = useState('');
+  const [editExposureDial, setEditExposureDial] = useState(50);
+  const [editCompetencies, setEditCompetencies] = useState<string>('');
 
   const [currentView, setCurrentView] = useState<'home' | 'profile' | 'dashboard' | 'bounties' | 'gigs' | 'search' | 'network' | 'activity' | 'messaging'>('home');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Scroll direction state for dynamic UI behaviour
+  const [isNavVisible, setIsNavVisible] = useState(true);
+  const elementScrollMap = useRef(new Map<HTMLElement, number>());
+  const lastActiveTarget = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const handleGlobalScroll = (e: any) => {
+      let target = e.target;
+      // Handle the case where document or window is the scroll target
+      if (target === document) target = document.documentElement;
+      if (!(target instanceof HTMLElement)) return;
+      
+      const currentScrollY = target.scrollTop;
+      
+      // If we switch to a different scrollable container, update our reference
+      if (lastActiveTarget.current !== target) {
+        elementScrollMap.current.set(target, currentScrollY);
+        lastActiveTarget.current = target;
+        return;
+      }
+
+      const lastScroll = elementScrollMap.current.get(target) || 0;
+      const diff = currentScrollY - lastScroll;
+
+      // Threshold to ignore micro-scrolls and jitter
+      if (Math.abs(diff) < 10) return;
+
+      if (diff > 0 && currentScrollY > 80) {
+        // Scrolling Down: Hide Navs
+        if (isNavVisible) setIsNavVisible(false);
+      } else if (diff < -20 || currentScrollY < 40) {
+        // Scrolling Up or near the top: Show Navs
+        if (!isNavVisible) setIsNavVisible(true);
+      }
+      
+      elementScrollMap.current.set(target, currentScrollY);
+    };
+
+    // Use capturing phase to ensure we catch scroll events from any nested container
+    window.addEventListener('scroll', handleGlobalScroll, true);
+    return () => window.removeEventListener('scroll', handleGlobalScroll, true);
+  }, [isNavVisible]);
+
+  const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+    // No longer strictly necessary but kept for manual triggers if needed
+  };
 
   // Bounties State
   const [isBountyModalOpen, setIsBountyModalOpen] = useState(false);
@@ -485,31 +537,68 @@ export default function App() {
       setEditBio(user.professional_bio);
       setEditIsVerified(user.is_verified);
       setEditProfileImage(user.profileImage || '');
+      setEditBannerImage(user.bannerImage || '');
       setEditLocation(user.location || '');
       setEditWebsite(user.website || '');
+      setEditExposureDial(user.exposure_dial || 50);
+      setEditCompetencies(user.competencies?.join(', ') || 'Systems Architecture, Editorial UI, Neural Branding');
       setIsEditProfileOpen(true);
+    }
+  };
+
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Incompatible volume: Signal too heavy. Limit transmissions to 2MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setter(event.target?.result as string);
+        toast.success("Identity asset buffered securely.");
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    setIsUpdatingProfile(true);
+
     try {
       const userRef = doc(db, 'users', user.id);
-      await updateDoc(userRef, {
+      const updatedData = {
         username: editUsername,
         professional_bio: editBio,
         is_verified: editIsVerified,
         profileImage: editProfileImage,
+        bannerImage: editBannerImage,
         location: editLocation,
-        website: editWebsite
+        website: editWebsite,
+        exposure_dial: editExposureDial,
+        competencies: editCompetencies.split(',').map(s => s.trim()).filter(Boolean),
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(userRef, updatedData);
+      
+      setUser({ 
+        ...user, 
+        ...updatedData,
+        competencies: updatedData.competencies
       });
-      setUser({ ...user, username: editUsername, professional_bio: editBio, is_verified: editIsVerified, profileImage: editProfileImage, location: editLocation, website: editWebsite });
+
       setIsEditProfileOpen(false);
-      toast.success('Profile updated');
+      toast.success('Identity recalibrated successfully');
     } catch (error) {
       console.error(error);
-      toast.error('Failed to update profile');
+      toast.error('Neural registry update failed');
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -578,7 +667,7 @@ export default function App() {
     const existing = conversations.find(c => c.participants.includes(otherUserId));
     if (existing) {
       setActiveConversationId(existing.id);
-      setIsDMOpen(true);
+      setCurrentView('messaging');
       return;
     }
 
@@ -597,7 +686,7 @@ export default function App() {
         });
       }
       setActiveConversationId(convId);
-      setIsDMOpen(true);
+      setCurrentView('messaging');
     } catch (error) {
       console.error(error);
       toast.error('Failed to start conversation');
@@ -724,8 +813,17 @@ export default function App() {
         </motion.div>
       ) : (
         <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1, delay: 0.2 }} className="min-h-screen max-w-[100vw] overflow-x-hidden bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-fixed flex flex-col">
-          {/* TopNavBar */}
-      <nav className="flex justify-between items-center w-full px-6 py-3 sticky top-0 z-50 bg-surface border-b border-outline-variant/10">
+          {/* TopNavBar - Smart Hide on Scroll */}
+      <motion.nav 
+        initial={false}
+        animate={{ 
+          y: (isNavVisible && currentView !== 'messaging') ? 0 : -100,
+          opacity: (isNavVisible && currentView !== 'messaging') ? 1 : 0,
+          scale: (isNavVisible && currentView !== 'messaging') ? 1 : 0.98 
+        }}
+        transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+        className="flex justify-between items-center w-full px-6 py-3 sticky top-0 z-50 bg-surface border-b border-outline-variant/10 shadow-sm"
+      >
         <div className="flex items-center gap-8">
           <span className="text-xl font-black text-on-surface tracking-tighter font-headline">OpenSphere</span>
           <div className="hidden md:flex gap-6 items-center">
@@ -753,10 +851,18 @@ export default function App() {
             </div>
           </div>
         </div>
-      </nav>
+      </motion.nav>
 
-      {/* Bottom Navigation Bar (Mobile) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-outline-variant/10 z-[60] px-8 py-3 flex justify-between items-center h-[72px] pb-[max(12px,env(safe-area-inset-bottom))]">
+      {/* Bottom Navigation Bar (Mobile) - Smart Hide */}
+      <motion.div 
+        initial={false}
+        animate={{ 
+          y: isNavVisible ? 0 : 150,
+          opacity: isNavVisible ? 1 : 0 
+        }}
+        transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+        className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-outline-variant/10 z-[60] px-8 py-3 flex justify-between items-center h-[72px] pb-[max(12px,env(safe-area-inset-bottom))]"
+      >
         <button onClick={() => setCurrentView('home')} className={`p-2 transition-all flex flex-col items-center gap-1 bg-transparent border-none outline-none ${currentView === 'home' ? 'text-on-surface' : 'text-outline hover:text-on-surface'}`}>
           <div className="relative flex flex-col items-center">
             <Home className="w-6 h-6" fill={currentView === 'home' ? 'currentColor' : 'none'} strokeWidth={currentView === 'home' ? 2 : 2} />
@@ -791,12 +897,20 @@ export default function App() {
             {currentView === 'messaging' && <span className="absolute -bottom-[8px] w-1 h-1 rounded-full bg-on-surface"></span>}
           </div>
         </button>
-      </div>
+      </motion.div>
 
       {/* Floating Theme Toggle (Removed per user request) */}
-        {/* SideNavBar */}
+        {/* SideNavBar - Collapses on Scroll Down */}
         {currentView !== 'gigs' && (
-        <aside className={`hidden lg:flex flex-col h-[calc(100vh-60px)] fixed left-0 top-[60px] pt-8 bg-surface-container-low border-r border-outline-variant/15 z-40 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}>
+        <motion.aside 
+          initial={false}
+          animate={{ 
+            x: isNavVisible ? 0 : (isSidebarCollapsed ? -80 : -256),
+            opacity: isNavVisible ? 1 : 0
+          }}
+          transition={{ duration: 0.3 }}
+          className={`hidden lg:flex flex-col h-[calc(100vh-60px)] fixed left-0 top-[60px] pt-8 bg-surface-container-low border-r border-outline-variant/15 z-40 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-20' : 'w-64'}`}
+        >
           <div className="p-6 flex-1 flex flex-col">
             {!isSidebarCollapsed && (
               <div className="flex items-center gap-3 mb-8">
@@ -886,17 +1000,20 @@ export default function App() {
               {!isSidebarCollapsed && <span className="font-label uppercase tracking-widest text-[10px]">Collapse</span>}
             </button>
           </div>
-        </aside>
+        </motion.aside>
         )}
 
         {/* Main Content Area */}
-        <main className={`flex-1 w-full bg-surface transition-all duration-300 ease-in-out ${currentView === 'gigs' ? 'lg:ml-0' : (isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64')}`}>
+        <main 
+          onScroll={handleScroll}
+          className={`flex-1 w-full bg-surface transition-all duration-300 ease-in-out ${currentView === 'gigs' ? 'lg:ml-0' : (isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64')} ${currentView === 'messaging' ? 'h-screen' : ''}`}
+        >
           <AnimatePresence mode="wait">
           {currentView === 'home' && (
             <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="grid grid-cols-1 xl:grid-cols-2 min-h-[calc(100vh-60px)]">
               
               {/* Left Column: The Vibe (Raw Feed) */}
-            <section className="hidden xl:block border-r border-outline-variant/10 bg-surface-container-low p-4 lg:p-6 overflow-y-auto">
+            <section onScroll={handleScroll} className="hidden xl:block border-r border-outline-variant/10 bg-surface-container-low p-4 lg:p-6 overflow-y-auto">
               <header className="mb-6 flex justify-between items-end">
                 <div>
                   <h2 className="font-headline text-2xl font-black text-primary tracking-tighter">VIBES</h2>
@@ -942,7 +1059,7 @@ export default function App() {
             </section>
 
             {/* Right Column: The Vault (Deep Dives) */}
-            <section className="hidden xl:block bg-surface p-4 lg:p-6 overflow-y-auto pb-32">
+            <section onScroll={handleScroll} className="hidden xl:block bg-surface p-4 lg:p-6 overflow-y-auto pb-32">
               <header className="mb-6 flex justify-between items-end">
                 <div>
                   <h2 className="font-headline text-2xl font-black text-primary tracking-tighter">GIGS</h2>
@@ -1011,7 +1128,12 @@ export default function App() {
                 user={user} 
                 posts={posts} 
                 onEdit={openEditProfile} 
-                onNavigateToGigs={() => setCurrentView('gigs')}
+                onLogout={handleLogout}
+                onBack={() => setCurrentView('home')}
+                onDeletePost={handleDeletePost}
+                onLikePost={handleLikePost}
+                onReVibePost={handleReVibePost}
+                onCommentPost={handleCommentPost}
               />
             </motion.div>
           )}
@@ -1051,6 +1173,7 @@ export default function App() {
               <MessagingView 
                 currentUser={user} 
                 onNavigateToProfile={() => setCurrentView('profile')}
+                initialChatId={activeConversationId}
               />
             </motion.div>
           )}
@@ -1188,89 +1311,297 @@ export default function App() {
           )}
           </AnimatePresence>
         </main>
-      
-      {/* Edit Profile Modal */}
-      {isEditProfileOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-outline-variant/20 rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-outline-variant/10 flex justify-between items-center bg-surface-container-low">
-              <h3 className="font-headline font-bold text-lg text-primary tracking-tight">Edit Profile</h3>
-              <button onClick={() => setIsEditProfileOpen(false)} className="text-secondary hover:text-on-surface">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleUpdateProfile} className="p-4 space-y-4">
-              <div>
-                <label className="block font-label text-[10px] text-secondary uppercase tracking-widest mb-2">Profile Image URL</label>
-                <input 
-                  value={editProfileImage}
-                  onChange={(e) => setEditProfileImage(e.target.value)}
-                  placeholder="https://example.com/avatar.jpg"
-                  className="w-full bg-surface-container p-3 rounded border border-outline-variant/20 text-on-surface font-body text-sm focus:outline-none focus:border-primary-container"
-                />
-              </div>
+           <AnimatePresence>
+        {isEditProfileOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setIsEditProfileOpen(false)}
+              className="absolute inset-0 bg-black/90 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 30 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              className="relative w-full max-w-3xl bg-surface border border-outline-variant/30 rounded-[40px] shadow-[0_30px_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Decorative Geometric Background */}
+              <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-primary-container/5 blur-[100px] -mr-40 -mt-40 rounded-full pointer-events-none"></div>
               
-              <div>
-                <label className="block font-label text-[10px] text-secondary uppercase tracking-widest mb-2">Username</label>
-                <input 
-                  required
-                  value={editUsername}
-                  onChange={(e) => setEditUsername(e.target.value)}
-                  className="w-full bg-surface-container p-3 rounded border border-outline-variant/20 text-on-surface font-body text-sm focus:outline-none focus:border-primary-container"
-                />
-              </div>
-              
-              <div>
-                <label className="block font-label text-[10px] text-secondary uppercase tracking-widest mb-2">Professional Bio</label>
-                <textarea 
-                  required
-                  value={editBio}
-                  onChange={(e) => setEditBio(e.target.value)}
-                  className="w-full bg-surface-container p-3 rounded border border-outline-variant/20 text-on-surface font-body text-sm focus:outline-none focus:border-primary-container min-h-[80px]"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 bg-surface-container p-3 rounded border border-outline-variant/20">
-                <input 
-                  type="checkbox" 
-                  id="verified-check"
-                  checked={editIsVerified}
-                  onChange={(e) => setEditIsVerified(e.target.checked)}
-                  className="w-4 h-4 accent-primary-container cursor-pointer"
-                />
-                <label htmlFor="verified-check" className="font-label text-xs text-on-surface cursor-pointer">
-                  Verified Status
-                </label>
-              </div>
-
-              <div className="pt-4 flex gap-3">
+              <div className="p-8 lg:p-12 border-b border-outline-variant/10 flex justify-between items-center relative z-10">
+                <div>
+                  <h2 className="text-4xl font-black font-headline text-primary tracking-tighter leading-none">Identity Recalibration</h2>
+                  <p className="font-label text-[10px] text-secondary tracking-[0.3em] uppercase mt-3">Updating Neural Footprint / Registry 04-X</p>
+                </div>
                 <button 
-                  type="button" 
                   onClick={() => setIsEditProfileOpen(false)}
-                  className="flex-1 py-3 rounded font-label uppercase tracking-widest text-xs font-bold bg-surface-container text-secondary hover:bg-surface-container-high transition-colors"
+                  className="w-12 h-12 flex items-center justify-center bg-surface-container-high hover:bg-surface-container-highest rounded-2xl transition-all group active:scale-95"
                 >
-                  Cancel
+                  <X className="w-5 h-5 text-outline group-hover:text-on-surface" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateProfile} className="flex-1 overflow-y-auto p-8 lg:p-12 space-y-12 custom-scrollbar relative z-10">
+                {/* Visual Identity Section */}
+                <div className="space-y-10">
+                  <div className="relative group rounded-[32px] overflow-hidden aspect-[3/1] bg-surface-container-low border border-outline-variant/30">
+                    <img 
+                      src={editBannerImage || "https://images.unsplash.com/photo-1635776062127-d379bfcba9f8?q=80&w=2000&auto=format&fit=crop"} 
+                      className="w-full h-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105"
+                      alt="Banner Preview"
+                    />
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20">
+                          <Camera className="w-6 h-6 text-white" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white underline underline-offset-4">Recalibrate Header</span>
+                      </div>
+                    </div>
+                    <input 
+                      type="file"
+                      accept="image/*"
+                      className="absolute inset-0 opacity-0 cursor-pointer z-20"
+                      onChange={(e) => handleImageUpload(e, setEditBannerImage)}
+                      title="Update Header Transmission"
+                    />
+                  </div>
+
+                  <div className="flex flex-col md:flex-row gap-10 items-start -mt-20 px-4 relative z-20">
+                    <div className="relative group">
+                      <div className="w-32 h-32 rounded-full overflow-hidden border-[4px] border-surface bg-surface-container-low shadow-2xl relative z-10 transition-transform group-hover:scale-[1.05]">
+                        <img 
+                          src={editProfileImage || "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=1000"} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
+                          <Camera className="w-5 h-5 text-white" />
+                        </div>
+                        <input 
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 opacity-0 cursor-pointer z-30"
+                          onChange={(e) => handleImageUpload(e, setEditProfileImage)}
+                          title="Update Node Avatar"
+                        />
+                      </div>
+                      <div className="absolute -inset-2 bg-primary-container/20 blur-xl opacity-0 group-hover:opacity-100 transition duration-1000"></div>
+                      <div className="absolute -bottom-2 -right-2 bg-primary-container text-on-primary-fixed w-10 h-10 rounded-full flex items-center justify-center shadow-lg border-2 border-surface z-20">
+                        <Zap className="w-4 h-4" />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 w-full space-y-6 pt-10 md:pt-20">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                            <Plus className="w-3 h-3" /> Header Source (Remote URL)
+                          </label>
+                          <input 
+                            value={editBannerImage.startsWith('data:') ? 'LOCKED / LOCAL_CACHE' : editBannerImage}
+                            onChange={(e) => setEditBannerImage(e.target.value)}
+                            disabled={editBannerImage.startsWith('data:')}
+                            className="w-full h-14 bg-surface-container-low border border-outline-variant/30 rounded-2xl px-5 text-sm font-medium focus:outline-none focus:border-primary-container transition-all disabled:opacity-50"
+                            placeholder="Remote Image Path..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                            <Plus className="w-3 h-3" /> Avatar Source (Remote URL)
+                          </label>
+                          <input 
+                            value={editProfileImage.startsWith('data:') ? 'LOCKED / LOCAL_CACHE' : editProfileImage}
+                            onChange={(e) => setEditProfileImage(e.target.value)}
+                            disabled={editProfileImage.startsWith('data:')}
+                            className="w-full h-14 bg-surface-container-low border border-outline-variant/30 rounded-2xl px-5 text-sm font-medium focus:outline-none focus:border-primary-container transition-all disabled:opacity-50"
+                            placeholder="Remote Image Path..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                      <User className="w-3 h-3" /> Professional Handle
+                    </label>
+                    <input 
+                      required
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      className="w-full h-14 bg-surface-container-low border border-outline-variant/30 rounded-2xl px-5 text-sm font-black focus:outline-none focus:border-primary-container transition-all tracking-tight"
+                      placeholder="Neural_Architect_01"
+                    />
+                  </div>
+                </div>
+
+                {/* Mission / Bio */}
+                <div className="space-y-3">
+                  <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                    <FileText className="w-3 h-3" /> Core Mission / Bio
+                  </label>
+                  <textarea 
+                    required
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    className="w-full h-32 bg-surface-container-low border border-outline-variant/30 rounded-[32px] p-6 text-base font-medium focus:outline-none focus:border-primary-container transition-all resize-none italic"
+                    placeholder="Architecting digital ecosystems for high-velocity delivery..."
+                  />
+                </div>
+
+                {/* Grid Coordinates & Website */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                      <MapPin className="w-3 h-3" /> Grid Coordinates (Location)
+                    </label>
+                    <input 
+                      value={editLocation}
+                      onChange={(e) => setEditLocation(e.target.value)}
+                      className="w-full h-14 bg-surface-container-low border border-outline-variant/30 rounded-2xl px-5 text-sm font-medium focus:outline-none focus:border-primary-container transition-all"
+                      placeholder="SF / New York / Remote"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                      <Globe2 className="w-3 h-3" /> External Node (Website)
+                    </label>
+                    <input 
+                      value={editWebsite}
+                      onChange={(e) => setEditWebsite(e.target.value)}
+                      className="w-full h-14 bg-surface-container-low border border-outline-variant/30 rounded-2xl px-5 text-sm font-medium focus:outline-none focus:border-primary-container transition-all"
+                      placeholder="portfolio.design"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="font-label text-[10px] font-black uppercase tracking-widest text-outline ml-1 flex items-center gap-2">
+                    <Grid className="w-3 h-3" /> Professional Clusters (Comma separated)
+                  </label>
+                  <input 
+                    value={editCompetencies}
+                    onChange={(e) => setEditCompetencies(e.target.value)}
+                    className="w-full h-14 bg-surface-container-low border border-outline-variant/30 rounded-2xl px-5 text-sm font-medium focus:outline-none focus:border-primary-container transition-all"
+                    placeholder="Systems Architecture, Editorial UI, Neural Branding"
+                  />
+                </div>
+
+                {/* Vibe Tuning - Exposure Dial */}
+                <div className="p-8 bg-surface-container-high rounded-[32px] border border-primary-container/20 group/tuning">
+                  <div className="flex justify-between items-end mb-8">
+                    <div>
+                      <h3 className="font-headline font-black text-lg tracking-tight text-primary">Vibe Tuning</h3>
+                      <p className="font-label text-[9px] text-secondary tracking-widest uppercase mt-1">Adjust signal filter strength</p>
+                    </div>
+                    <div className="text-4xl font-black font-mono text-primary-container animate-pulse">{editExposureDial}%</div>
+                  </div>
+                  
+                  <div className="relative px-2">
+                    <input 
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={editExposureDial}
+                      onChange={(e) => setEditExposureDial(parseInt(e.target.value))}
+                      className="w-full h-2 bg-surface-container-highest rounded-full appearance-none cursor-pointer accent-primary-container"
+                    />
+                    <div className="absolute -top-6 left-0 right-0 flex justify-between px-2 text-[8px] font-black text-outline uppercase tracking-widest opacity-40">
+                      {[...Array(11)].map((_, i) => (
+                        <div key={i} className={`w-0.5 h-2 rounded-full ${i % 5 === 0 ? 'bg-primary-container h-3' : 'bg-outline'}`} />
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between mt-6">
+                    <div className="text-center group-hover/tuning:opacity-100 opacity-60 transition-opacity">
+                      <div className="text-[9px] font-black text-on-surface uppercase tracking-[0.2em] mb-1">Polished</div>
+                      <div className="text-[8px] font-medium text-outline">Corporate Accuracy</div>
+                    </div>
+                    <div className="text-center group-hover/tuning:opacity-100 opacity-60 transition-opacity">
+                      <div className="text-[9px] font-black text-[#00ffab] uppercase tracking-[0.2em] mb-1">Raw Pulse</div>
+                      <div className="text-[8px] font-medium text-outline">Unfiltered Signal</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Permissions / Status */}
+                <div className="flex items-center justify-between p-6 bg-surface-container-low rounded-3xl border border-outline-variant/10">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl transition-colors ${editIsVerified ? 'bg-[#00ffab]/10 text-[#00ffab]' : 'bg-outline/10 text-outline'}`}>
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-black text-on-surface tracking-tight">Verified Credential</div>
+                      <div className="text-[10px] text-outline uppercase tracking-widest font-bold">Protocol Auth Stage 1</div>
+                    </div>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setEditIsVerified(!editIsVerified)}
+                    className={`w-14 h-8 rounded-full transition-all relative ${editIsVerified ? 'bg-[#00ffab]' : 'bg-outline/30'}`}
+                  >
+                    <motion.div 
+                      layout
+                      className="absolute top-1 left-1 bottom-1 w-6 bg-white rounded-full shadow-lg"
+                      animate={{ x: editIsVerified ? 24 : 0 }}
+                    />
+                  </button>
+                </div>
+              </form>
+
+              <div className="p-8 lg:p-12 bg-surface-container-low border-t border-outline-variant/10 flex justify-end gap-5 items-center">
+                <button 
+                  type="button"
+                  disabled={isUpdatingProfile}
+                  onClick={() => setIsEditProfileOpen(false)}
+                  className="px-8 py-3 text-sm font-bold text-outline hover:text-on-surface transition-colors disabled:opacity-50"
+                >
+                  Discard Changes
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 rounded font-label uppercase tracking-widest text-xs font-bold bg-primary-container text-on-primary-container hover:brightness-110 transition-all shadow-[0_0_15px_rgba(0,255,170,0.2)]"
+                  disabled={isUpdatingProfile}
+                  onClick={handleUpdateProfile}
+                  className="px-10 py-4 bg-on-surface text-surface rounded-[20px] text-sm font-black tracking-tight hover:opacity-90 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.2)] flex items-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Save Changes
+                  {isUpdatingProfile ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Re-calibrating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" /> 
+                      Save Profile Identity
+                    </>
+                  )}
                 </button>
               </div>
-            </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
-      {/* Mobile FAB for Creating Posts */}
-      <button
+      {/* Mobile FAB for Creating Posts - Smart Hide */}
+      <motion.button
+        initial={false}
+        animate={{ 
+          y: isNavVisible ? 0 : 150,
+          opacity: isNavVisible ? 1 : 0
+        }}
+        transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
         onClick={() => setIsModalOpen(true)}
-        className="lg:hidden fixed bottom-20 right-6 w-14 h-14 bg-primary-container text-on-primary-container rounded-full shadow-[0_0_20px_rgba(0,255,171,0.4)] flex items-center justify-center z-40 hover:scale-105 transition-transform"
+        className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-primary-container text-on-primary-container rounded-full shadow-[0_0_20px_rgba(0,255,171,0.4)] flex items-center justify-center z-[100] hover:scale-105 transition-transform"
       >
         <Edit2 className="w-6 h-6" />
-      </button>
+      </motion.button>
 
       {/* Create Post Modal */}
       <CreatePostModal 
