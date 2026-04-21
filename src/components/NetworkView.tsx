@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, User, Bell, ChevronRight, UserPlus, Check, X, ShieldCheck, Mail, Users, Plus, Hash, Globe, Lock, MessageCircle, TrendingUp, MoreHorizontal, UserCheck, BarChart2 } from 'lucide-react';
+import { Search, User, Bell, ChevronRight, UserPlus, Check, X, ShieldCheck, Mail, Users, Plus, Hash, Globe, Lock, MessageCircle, TrendingUp, MoreHorizontal, UserCheck, BarChart2, Video, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as d3 from 'd3';
 import { toast } from 'sonner';
+import { CallSignals } from './CallManager';
 
 interface NetworkViewProps {
   currentUser: any;
@@ -610,8 +611,15 @@ const NetworkView: React.FC<NetworkViewProps> = ({ currentUser, onNavigateToProf
                     )}
                   </button>
                   <button 
-                    onClick={() => onStartDM(person.id)}
+                    onClick={() => CallSignals.triggerCall(person.id, 'video')}
                     className="p-4 bg-surface-container-high border border-outline-variant/20 rounded-2xl text-on-surface hover:bg-surface-container-highest transition-all active:scale-[0.98]"
+                    title="Video Call"
+                  >
+                    <Video className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => onStartDM(person.id)}
+                    className="p-4 bg-surface-container-high border border-outline-variant/20 rounded-2xl text-primary-container hover:bg-surface-container-highest transition-all active:scale-[0.98]"
                     title="Send Message"
                   >
                     <Mail className="w-5 h-5" />

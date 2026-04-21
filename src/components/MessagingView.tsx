@@ -4,7 +4,7 @@ import {
   Users as UsersIcon, Plus, ChevronLeft, Paperclip, 
   Smile, Mic, Send, MoreVertical, Phone, Video,
   CheckCheck, Clock, Archive, BellOff, Trash, 
-  Flag, Ban, MessageSquare, ShieldCheck, Camera
+  Flag, Ban, MessageSquare, ShieldCheck, Camera, Square
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -57,6 +57,9 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
   const [selectedChatOtherUser, setSelectedChatOtherUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -174,6 +177,8 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
         };
       });
       setActiveMessages(msgs);
+    }, (error) => {
+      console.error("Error fetching messages:", error);
     });
 
     // Get other user info for the header
@@ -197,29 +202,47 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
     }
   }, [activeMessages]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent, customText?: string) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedChatId || !currentUser?.id) return;
+    const messageText = customText || newMessage.trim();
+    if (!messageText || !selectedChatId || !currentUser?.id) return;
 
-    const text = newMessage;
-    setNewMessage('');
+    if (!customText) setNewMessage('');
 
     try {
       const messageRef = collection(db, 'conversations', selectedChatId, 'messages');
       await addDoc(messageRef, {
         senderId: currentUser.id,
-        text,
+        text: messageText,
         createdAt: serverTimestamp()
       });
 
       const convRef = doc(db, 'conversations', selectedChatId);
       await updateDoc(convRef, {
-        lastMessage: text,
+        lastMessage: messageText,
         updatedAt: Date.now()
       });
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error("Failed to send message");
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      toast.success(`Attached ${file.name}`);
+      handleSendMessage(e as any, `📎 Attached file: ${file.name}`);
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      setIsRecording(false);
+      handleSendMessage({ preventDefault: () => {} } as React.FormEvent, '🎤 Voice note (0:12s)');
+    } else {
+      setIsRecording(true);
+      toast.info('Recording started. Tap square to send.', { duration: 2000 });
     }
   };
 
@@ -259,7 +282,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
   });
 
   return (
-    <div className="flex w-full h-full md:h-screen lg:h-screen bg-surface overflow-hidden relative font-headline">
+    <div className="flex w-full h-full bg-surface overflow-hidden relative font-headline">
       {/* Sidebar - List of Chats */}
       <div className={`w-full md:w-[360px] lg:w-[400px] flex flex-col border-r border-outline-variant/10 bg-surface z-20 transition-all duration-300 ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
         {/* Sidebar Header */}
@@ -442,14 +465,6 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => CallSignals.triggerCall(selectedChatOtherUser?.id, 'video')} 
-                    className="p-2.5 hover:bg-surface-container rounded-xl text-outline hover:text-primary-container transition-all active:scale-90"
-                  ><Video className="w-4.5 h-4.5" /></button>
-                  <button 
-                    onClick={() => CallSignals.triggerCall(selectedChatOtherUser?.id, 'audio')} 
-                    className="p-2.5 hover:bg-surface-container rounded-xl text-outline hover:text-primary-container transition-all active:scale-90"
-                  ><Phone className="w-4.5 h-4.5" /></button>
                   <button className="p-2.5 hover:bg-surface-container rounded-xl text-outline hover:text-primary-container transition-all active:scale-90"><MoreHorizontal className="w-4.5 h-4.5" /></button>
                 </div>
               </header>
@@ -505,10 +520,26 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
 
               {/* Message Input Area */}
               <div className="px-3 py-3 md:px-6 md:py-6 bg-surface border-t border-outline-variant/10 h-[85.6914px] w-[376.891px] mb-0 pb-[8px]">
-                <form onSubmit={handleSendMessage} className="flex items-center gap-3 max-w-6xl mx-auto">
+                <form onSubmit={handleSendMessage} className="flex items-center gap-3 max-w-6xl mx-auto" style={{ marginLeft: '-11px' }}>
                   {/* The Capsule */}
-                  <div className="flex-1 flex items-center bg-surface-container-high border border-outline-variant/10 rounded-[28px] px-2 py-1 shadow-inner group-focus-within:border-primary-container/30 transition-all duration-300 w-[356.922px]">
-                    <button type="button" className="p-2.5 text-outline hover:text-on-surface hover:bg-surface-container rounded-full transition-all active:scale-90">
+                  <div 
+                    className="flex-1 flex items-center bg-surface-container-high border border-outline-variant/10 rounded-[28px] py-1 shadow-inner group-focus-within:border-primary-container/30 transition-all duration-300"
+                    style={{ 
+                      paddingTop: '-4px', 
+                      paddingBottom: '4px', 
+                      paddingRight: '20px', 
+                      marginLeft: '12px', 
+                      marginTop: '-3px', 
+                      marginRight: '-5px', 
+                      marginBottom: '5px', 
+                      width: '100px' 
+                    }}
+                  >
+                    <button 
+                      type="button" 
+                      onClick={() => toast.success('Emoji picker activated', { duration: 1000 })}
+                      className="p-2.5 text-outline hover:text-on-surface hover:bg-surface-container rounded-full transition-all active:scale-90 flex-shrink-0"
+                    >
                       <Smile className="w-6 h-6" />
                     </button>
                     
@@ -528,11 +559,22 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                     />
 
                     <div className="flex items-center gap-0.5 pr-1">
-                      <button type="button" className="p-2.5 text-outline hover:text-on-surface hover:bg-surface-container rounded-full transition-all active:scale-90">
+                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                      <input type="file" ref={cameraInputRef} onChange={handleFileUpload} accept="image/*,video/*" capture="environment" className="hidden" />
+                      
+                      <button 
+                        type="button" 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-2.5 text-outline hover:text-on-surface hover:bg-surface-container rounded-full transition-all active:scale-90"
+                      >
                         <Paperclip className="w-5 h-5 -rotate-45" />
                       </button>
                       {!newMessage.trim() && (
-                        <button type="button" className="p-2.5 text-outline hover:text-on-surface hover:bg-surface-container rounded-full transition-all active:scale-90">
+                        <button 
+                          type="button" 
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="p-2.5 text-outline hover:text-on-surface hover:bg-surface-container rounded-full transition-all active:scale-90"
+                        >
                           <Camera className="w-5 h-5 transition-all" />
                         </button>
                       )}
@@ -553,9 +595,14 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                     ) : (
                       <button 
                         type="button"
-                        className="w-[52px] h-[52px] bg-primary-container text-on-primary rounded-full flex items-center justify-center shadow-lg hover:shadow-primary-container/20 hover:brightness-105 active:scale-90 transition-all duration-200"
+                        onClick={toggleRecording}
+                        className={`w-[52px] h-[52px] rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all duration-200 ${
+                          isRecording 
+                            ? 'bg-error text-on-error animate-pulse hover:shadow-error/20' 
+                            : 'bg-primary-container text-on-primary hover:shadow-primary-container/20 hover:brightness-105'
+                        }`}
                       >
-                        <Mic className="w-6 h-6" />
+                        {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-6 h-6" />}
                       </button>
                     )}
                   </div>

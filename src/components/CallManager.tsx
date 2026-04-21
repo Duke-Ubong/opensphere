@@ -41,6 +41,19 @@ export const CallManager: React.FC<CallManagerProps> = ({ currentUser, allUsers 
   const callDocRef = useRef<any>(null);
   
   const unsubCallRef = useRef<() => void>(() => {});
+  const unsubIceRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      if (unsubCallRef.current) unsubCallRef.current();
+      if (unsubIceRef.current) unsubIceRef.current();
+      
+      pc.current?.close();
+      localStream?.getTracks().forEach(track => track.stop());
+      remoteStream?.getTracks().forEach(track => track.stop());
+    };
+  }, []);
 
   useEffect(() => {
     // Listen for incoming calls
@@ -58,6 +71,8 @@ export const CallManager: React.FC<CallManagerProps> = ({ currentUser, allUsers 
           setIncomingCall((prev: any) => (prev?.id === change.doc.id ? null : prev));
         }
       });
+    }, (error) => {
+      console.error("Error listening to incoming calls:", error);
     });
 
     return () => unsubscribe();
@@ -154,28 +169,41 @@ export const CallManager: React.FC<CallManagerProps> = ({ currentUser, allUsers 
 
       await updateDoc(callDoc, { offer });
 
+      if (unsubCallRef.current) unsubCallRef.current();
       // Listen for remote answer
       unsubCallRef.current = onSnapshot(callDoc, (snapshot) => {
         const data = snapshot.data();
         if (!pc.current?.currentRemoteDescription && data?.answer) {
-          const answerDescription = new RTCSessionDescription(data.answer);
-          pc.current.setRemoteDescription(answerDescription);
+          try {
+            const answerDescription = new RTCSessionDescription(data.answer);
+            pc.current?.setRemoteDescription(answerDescription).catch(e => console.error("setRemote answer error:", e));
+          } catch (err) {
+            console.error("Invalid answer format:", err);
+          }
         }
         if (data?.status === 'ended' || data?.status === 'rejected') {
           endCall();
           toast.info(data.status === 'rejected' ? "Call declined" : "Call ended");
         }
-      });
+      }, (error) => console.error("Call status snapshot error:", error));
 
+      if (unsubIceRef.current) unsubIceRef.current();
       // Listen for remote ICE candidates
-      onSnapshot(answerCandidatesRef, (snapshot) => {
+      unsubIceRef.current = onSnapshot(answerCandidatesRef, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            pc.current?.addIceCandidate(candidate);
+            try {
+              const data = change.doc.data();
+              if (data && Object.keys(data).length > 0) {
+                const candidate = new RTCIceCandidate(data);
+                pc.current?.addIceCandidate(candidate);
+              }
+            } catch (err) {
+              console.error("Error adding ice candidate:", err, change.doc.data());
+            }
           }
         });
-      });
+      }, (error) => console.error("Answer candidates snapshot error:", error));
       
     } else {
       const callData = (await getDoc(callDoc)).data();
@@ -194,6 +222,7 @@ export const CallManager: React.FC<CallManagerProps> = ({ currentUser, allUsers 
 
       await updateDoc(callDoc, { answer, status: 'answered' });
 
+      if (unsubCallRef.current) unsubCallRef.current();
       // Listen to call doc for end
       unsubCallRef.current = onSnapshot(callDoc, (snapshot) => {
         const data = snapshot.data();
@@ -201,17 +230,25 @@ export const CallManager: React.FC<CallManagerProps> = ({ currentUser, allUsers 
           endCall();
           toast.info("Call ended");
         }
-      });
+      }, (error) => console.error("Call listen error:", error));
 
+      if (unsubIceRef.current) unsubIceRef.current();
       // Listen for remote ICE candidates
-      onSnapshot(offerCandidatesRef, (snapshot) => {
+      unsubIceRef.current = onSnapshot(offerCandidatesRef, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
-            const candidate = new RTCIceCandidate(change.doc.data());
-            pc.current?.addIceCandidate(candidate);
+            try {
+              const data = change.doc.data();
+              if (data && Object.keys(data).length > 0) {
+                const candidate = new RTCIceCandidate(data);
+                pc.current?.addIceCandidate(candidate);
+              }
+            } catch (err) {
+              console.error("Error adding ice candidate:", err, change.doc.data());
+            }
           }
         });
-      });
+      }, (error) => console.error("Offer candidates error:", error));
     }
   };
 
@@ -262,6 +299,7 @@ export const CallManager: React.FC<CallManagerProps> = ({ currentUser, allUsers 
     setRemoteStream(null);
     setActiveCall(null);
     if(unsubCallRef.current) unsubCallRef.current();
+    if(unsubIceRef.current) unsubIceRef.current();
   };
 
   const toggleMic = () => {

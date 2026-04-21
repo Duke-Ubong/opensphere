@@ -833,8 +833,7 @@ export default function App() {
         >
           <CallManager currentUser={user} allUsers={allUsers} />
 
-          {/* TopNavBar - Smart Hide on Scroll */}
-      {currentView !== 'messaging' && (
+      {/* TopNavBar - Smart Hide on Scroll */}
       <motion.nav 
         initial={false}
         animate={{ 
@@ -881,10 +880,8 @@ export default function App() {
           </div>
         </div>
       </motion.nav>
-      )}
 
       {/* Bottom Navigation Bar (Mobile) - Smart Hide */}
-      {currentView !== 'messaging' && (
       <motion.div 
         initial={false}
         animate={{ 
@@ -929,11 +926,10 @@ export default function App() {
           </div>
         </button>
       </motion.div>
-      )}
 
       {/* Floating Theme Toggle (Removed per user request) */}
         {/* SideNavBar - Collapses on Scroll Down */}
-        {currentView !== 'gigs' && currentView !== 'messaging' && (
+        {currentView !== 'gigs' && (
         <motion.aside 
           initial={false}
           animate={{ 
@@ -1038,7 +1034,7 @@ export default function App() {
         {/* Main Content Area */}
         <main 
           onScroll={handleScroll}
-          className={`flex-1 w-full bg-surface transition-all duration-300 ease-in-out ${currentView === 'gigs' || currentView === 'messaging' ? 'lg:ml-0' : (isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64')} ${currentView === 'messaging' ? 'h-screen' : ''}`}
+          className={`flex-1 w-full bg-surface transition-all duration-300 ease-in-out ${currentView === 'gigs' ? 'lg:ml-0' : (isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64')} ${currentView === 'messaging' ? 'h-[calc(100vh-60px)] overflow-hidden' : ''}`}
         >
           <AnimatePresence mode="wait">
           {currentView === 'home' && (
@@ -1602,22 +1598,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Mobile FAB for Creating Posts - Smart Hide */}
-      {currentView !== 'messaging' && (
-      <motion.button
-        initial={false}
-        animate={{ 
-          y: isNavVisible ? 0 : 150,
-          opacity: isNavVisible ? 1 : 0
-        }}
-        transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
-        onClick={() => setIsModalOpen(true)}
-        className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-primary-container text-on-primary-container rounded-full shadow-[0_0_20px_rgba(0,255,171,0.4)] flex items-center justify-center z-[100] hover:scale-105 transition-transform"
-      >
-        <Edit2 className="w-6 h-6" />
-      </motion.button>
-      )}
 
       {/* Create Post Modal */}
       <CreatePostModal 

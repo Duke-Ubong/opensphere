@@ -43,5 +43,14 @@ service cloud.firestore {
     match /documents/{documentId} {
       allow read, write: if true;
     }
+    match /calls/{callId} {
+      allow read, write: if true;
+      match /offerCandidates/{candidateId} {
+        allow read, write: if true;
+      }
+      match /answerCandidates/{candidateId} {
+        allow read, write: if true;
+      }
+    }
   }
 }
