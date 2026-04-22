@@ -996,10 +996,10 @@ export default function App() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsModalOpen(true)}
-          className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-primary-container text-on-primary-fixed rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(0,255,171,0.3)] z-[70] transition-all border-4 border-surface"
+          className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-black text-white rounded-full flex items-center justify-center z-[70] transition-all border border-primary-container/30 hover:border-primary-container/60 clean-glow"
           title="New Transmission"
         >
-          <Plus className="w-7 h-7" />
+          <Plus className="w-7 h-7 text-primary-container animate-pulse-slow" />
         </motion.button>
       )}
 
@@ -1083,9 +1083,9 @@ export default function App() {
             </nav>
             <button 
               onClick={() => setIsModalOpen(true)}
-              className={`w-full mt-8 bg-primary-container text-on-primary-fixed py-3 rounded font-label uppercase tracking-widest text-[10px] font-bold hover:bg-primary-fixed-dim transition-colors flex items-center justify-center ${isSidebarCollapsed ? 'px-0' : 'px-4'}`}
+              className={`w-full mt-8 bg-black text-primary-container py-3 rounded font-label uppercase tracking-widest text-[10px] font-bold transition-all flex items-center justify-center border border-primary-container/30 hover:border-primary-container/60 clean-glow ${isSidebarCollapsed ? 'px-0' : 'px-4'}`}
             >
-              {isSidebarCollapsed ? <Edit2 className="w-4 h-4" /> : 'Create Post'}
+              {isSidebarCollapsed ? <Edit2 className="w-4 h-4 animate-pulse-slow" /> : <span className="animate-pulse-slow">Create Post</span>}
             </button>
           </div>
           <div className="mt-auto p-6 space-y-1">
@@ -1441,9 +1441,9 @@ export default function App() {
                       className="w-full h-full bg-surface-container-low border border-outline-variant/30 rounded-xl pl-10 pr-4 text-sm text-on-surface focus:outline-none focus:border-primary-container transition-colors"
                     />
                   </div>
-                  <button onClick={() => setIsBountyModalOpen(true)} className="bg-primary-container text-on-primary-fixed px-6 h-[44px] rounded font-label uppercase tracking-widest text-xs font-bold hover:bg-primary-fixed-dim transition-colors shadow-[0_0_15px_rgba(0,255,171,0.2)] shrink-0">
-                    Post Bounty
-                  </button>
+            <button onClick={() => setIsBountyModalOpen(true)} className="bg-black text-primary-container px-6 h-[44px] rounded font-label uppercase tracking-widest text-xs font-bold transition-all border border-primary-container/30 hover:border-primary-container/60 clean-glow shrink-0">
+              <span className="animate-pulse-slow">Post Bounty</span>
+            </button>
                 </div>
               </div>
               

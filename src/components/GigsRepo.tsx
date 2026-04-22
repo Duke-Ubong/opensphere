@@ -216,10 +216,10 @@ export default function GigsRepo() {
             <div className="w-px h-4 bg-white/10 mx-2"></div>
             <button 
               onClick={() => setIsUploadModalOpen(true)}
-              className="bg-primary-container text-black px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest uppercase hover:bg-on-primary-container transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(45,212,191,0.3)]"
+              className="bg-black text-primary-container px-4 py-1.5 rounded-lg text-[10px] font-black tracking-widest uppercase transition-all flex items-center gap-2 border border-primary-container/30 hover:border-primary-container/60 clean-glow"
             >
-              <Plus className="w-3 h-3" />
-              Upload New
+              <Plus className="w-3 h-3 animate-pulse-slow" />
+              <span className="animate-pulse-slow">Upload New</span>
             </button>
             <div className="w-px h-4 bg-white/10 mx-2"></div>
             <button 
@@ -644,7 +644,7 @@ export default function GigsRepo() {
               <button 
                 onClick={handleUploadSubmit}
                 disabled={isUploading}
-                className={`bg-primary-container text-black px-8 py-2 rounded font-black text-xs tracking-widest uppercase shadow-[0_0_15px_rgba(45,212,191,0.3)] flex items-center gap-2 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform'}`}
+                className={`bg-black text-primary-container px-8 py-2 rounded font-black text-xs tracking-widest uppercase transition-all flex items-center gap-2 border border-primary-container/30 hover:border-primary-container/60 clean-glow ${isUploading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
               >
                 {isUploading ? (
                   <>

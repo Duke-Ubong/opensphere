@@ -27,10 +27,10 @@
   --font-label: "Space Grotesk", monospace;
 
   @keyframes pulse-glow {
-    0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px rgba(45, 212, 191, 0.3)); }
-    50% { opacity: 0.9; filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.5)); }
+    0%, 100% { filter: drop-shadow(0 0 2px rgba(45, 212, 191, 0.2)); }
+    50% { filter: drop-shadow(0 0 8px rgba(45, 212, 191, 0.5)); }
   }
-  --animate-pulse-slow: pulse-glow 4s ease-in-out infinite;
+  --animate-pulse-slow: pulse-glow 3s ease-in-out infinite;
 }
 
 :root {
@@ -85,6 +85,14 @@
   }
   .mint-glow-active {
     box-shadow: 0 0 15px rgba(45, 212, 191, 0.15);
+  }
+  .clean-glow {
+    box-shadow: 0 0 10px rgba(45, 212, 191, 0.1);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+  }
+  .clean-glow:hover {
+    box-shadow: 0 0 15px rgba(45, 212, 191, 0.2);
+    border: 1px solid rgba(45, 212, 191, 0.4);
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
