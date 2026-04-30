@@ -402,12 +402,13 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
                     )}
                     <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words relative overflow-hidden ${
                       isMe 
-                        ? 'bg-primary-container text-on-primary-container rounded-tr-none' 
-                        : 'bg-surface-container-highest text-on-surface rounded-tl-none'
+                        ? 'bg-[#0A1F15] border border-primary-container/40 text-[#E0F8EC] rounded-tr-none shadow-[0_2px_10px_rgba(0,255,170,0.15)]' 
+                        : 'bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-tl-none shadow-sm'
                     }`}>
-                      {msg.text}
+                      {isMe && <div className="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent pointer-events-none"></div>}
+                      <span className="relative z-10">{msg.text}</span>
                       {msg.audioData && (
-                        <div className="mt-2 py-1">
+                        <div className="mt-2 py-1 relative z-10">
                           <audio 
                             src={msg.audioData} 
                             controls 
@@ -416,11 +417,13 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
                         </div>
                       )}
                       {isMe && (
-                        <div className="flex justify-end mt-1 text-[8px] opacity-70">
+                        <div className="flex justify-end mt-1 text-[8px] opacity-80 relative z-10" title={`Status: ${msg.status || 'sent'}`}>
                           {msg.status === 'read' ? (
-                            <CheckCheck className="w-3 h-3 text-on-primary-container" />
+                            <CheckCheck className="w-3.5 h-3.5 text-[#00E5FF] drop-shadow-[0_0_5px_rgba(0,229,255,0.6)]" />
+                          ) : msg.status === 'delivered' ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-on-primary-container/80" />
                           ) : (
-                            <Check className="w-3 h-3" />
+                            <Check className="w-3.5 h-3.5 text-on-primary-container/50" />
                           )}
                         </div>
                       )}

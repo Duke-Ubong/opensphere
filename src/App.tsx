@@ -258,14 +258,6 @@ const PostCard: React.FC<{
         </div>
       )}
       
-      {post.tag && (
-        <div className="flex items-center gap-2 mb-3">
-          <div className="inline-block px-2 py-0.5 bg-primary-container/10 text-primary-container text-xs font-mono rounded">
-            {post.tag}
-          </div>
-        </div>
-      )}
-      
       {isVibe ? (
         <div className="space-y-4">
           <div className="flex gap-6 text-secondary-fixed-dim text-xs">
@@ -861,6 +853,7 @@ export default function App() {
         originalPostId: originalPost.type === 'RE_VIBE' ? originalPost.originalPostId : originalPost.id,
         originalAuthorName: originalPost.type === 'RE_VIBE' ? originalPost.originalAuthorName : originalPost.authorName,
         tag: originalPost.tag,
+        image: originalPost.image,
         stats: { comments: 0, reVibes: 0, likes: 0 },
         likedBy: [],
         reVibedBy: [],

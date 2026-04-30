@@ -251,7 +251,7 @@ const WhatsAppStyleGroups: React.FC = () => {
     <section className="mb-10">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
         <div>
-          <h2 className="text-2xl font-black tracking-tighter mb-1 font-headline">Pulse Groups</h2>
+          <h2 className="text-2xl font-black tracking-tighter mb-1 font-headline">The Lounge</h2>
           <p className="text-xs text-outline font-medium tracking-tight">Real-time tactical communication hubs.</p>
         </div>
         
@@ -260,7 +260,7 @@ const WhatsAppStyleGroups: React.FC = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-outline" />
             <input 
               type="text" 
-              placeholder="Search groups..."
+              placeholder="Search lounge hubs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant/10 rounded-xl text-xs font-bold focus:outline-none focus:border-primary-container/40 transition-all w-full sm:w-48"
@@ -307,7 +307,7 @@ const WhatsAppStyleGroups: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center mb-1">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <h3 className="font-bold text-base truncate uppercase tracking-tight">{group.name}</h3>
+                    <h3 className="font-bold text-base truncate uppercase tracking-tight group-hover/item:text-primary-container transition-colors duration-300">{group.name}</h3>
                     {group.isVerified && <Check className="w-3.5 h-3.5 text-[#2dd4bf]" />}
                   </div>
                   <span className="text-[10px] text-outline font-medium">{group.time}</span>
@@ -336,10 +336,10 @@ const WhatsAppStyleGroups: React.FC = () => {
                     )}
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleToggleGroup(group.id, group.name); }}
-                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border ${
+                      className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border shadow-sm ${
                         joinedGroups.includes(group.id) 
-                          ? 'border-primary-container/20 text-primary-container bg-primary-container/5' 
-                          : 'border-outline-variant/30 text-on-surface hover:bg-surface-container-highest'
+                          ? 'border-primary-container/30 text-primary-container bg-primary-container/10 hover:border-primary-container/50 hover:bg-primary-container/20 group-hover/item:border-primary-container/40' 
+                          : 'border-outline-variant/30 text-on-surface hover:bg-surface-container-highest hover:border-outline-variant/60 group-hover/item:border-outline-variant/50 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]'
                       }`}
                     >
                       {joinedGroups.includes(group.id) ? 'Joined' : 'Join'}
@@ -572,7 +572,7 @@ const NetworkView: React.FC<NetworkViewProps> = ({ currentUser, onNavigateToProf
           </div>
         </section>
 
-        {/* Pulse Groups Section */}
+        {/* Lounge Section */}
         <WhatsAppStyleGroups />
 
         {/* Recommended Experts */}

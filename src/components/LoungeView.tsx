@@ -285,10 +285,12 @@ const GatewayView = ({ lounge, isVerified, progress, onEnter }: { lounge: any, i
         <button 
           onClick={onEnter}
           disabled={!isVerified}
-          className={`w-full py-4 rounded-xl font-bold uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 ${isVerified ? 'bg-lounge-gold text-on-primary-fixed hover:bg-lounge-gold/90 shadow-[0_0_30px_rgba(212,175,55,0.3)]' : 'bg-surface-container text-outline border border-outline-variant cursor-not-allowed'}`}
+          className={`w-full py-4 rounded-xl font-bold uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 relative overflow-hidden ${isVerified ? 'bg-lounge-gold text-on-primary-fixed hover:-translate-y-1 shadow-[0_0_30px_rgba(212,175,55,0.4)] hover:shadow-[0_0_40px_rgba(212,175,55,0.6)]' : 'bg-surface-container-high text-outline border border-outline-variant/40 cursor-not-allowed opacity-80'}`}
         >
           {isVerified ? 'Initialize Access' : `Verifying... ${progress}%`}
-          {isVerified && <ChevronRight className="w-5 h-5" />}
+          {isVerified && <ChevronRight className="w-5 h-5 absolute right-4 group-hover:translate-x-1 transition-transform" />}
+          {!isVerified && <div className="absolute bottom-0 left-0 h-0.5 bg-lounge-gold transition-all duration-300" style={{ width: `${progress}%` }}></div>}
+          {!isVerified && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent w-full -translate-x-full animate-shimmer"></div>}
         </button>
         
         {isVerified && (
@@ -326,34 +328,36 @@ const GatewayView = ({ lounge, isVerified, progress, onEnter }: { lounge: any, i
         </div>
 
         {/* Scanner Animation */}
-        <div className="relative w-48 h-48 flex items-center justify-center z-10">
+        <div className="relative w-48 h-48 flex items-center justify-center z-10 group">
           <div className={`absolute inset-0 border border-lounge-gold/30 rotate-45 transition-all duration-1000 ${isVerified ? 'scale-110 opacity-50' : 'animate-pulse'}`}></div>
           <div className={`absolute inset-4 border border-lounge-gold/50 rotate-45 transition-all duration-1000 ${isVerified ? 'scale-105 opacity-80' : 'animate-pulse delay-75'}`}></div>
           
-          <div className="w-32 h-32 bg-surface border border-lounge-gold z-20 overflow-hidden relative flex items-center justify-center">
+          <div className="w-32 h-32 bg-surface text-lounge-gold/50 border border-lounge-gold z-20 overflow-hidden relative flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.15)] transition-all duration-500">
              {isVerified ? (
-               <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200" alt="Verified User" className="w-full h-full object-cover opacity-80 grayscale" />
+               <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200" alt="Verified User" className="w-full h-full object-cover opacity-80 grayscale scale-105 transition-transform duration-1000" />
              ) : (
-               <Fingerprint className="w-16 h-16 text-lounge-gold/50" />
+               <Fingerprint className="w-16 h-16 opacity-70 animate-pulse" />
              )}
              {/* Scan Line */}
-             {!isVerified && <div className="absolute top-0 left-0 w-full h-1 bg-lounge-gold shadow-[0_0_10px_#D4AF37] animate-[scan_2s_ease-in-out_infinite]"></div>}
+             {!isVerified && <div className="absolute top-0 left-0 w-full h-1 bg-lounge-gold shadow-[0_0_15px_rgba(212,175,55,0.8)] animate-scan"></div>}
           </div>
         </div>
 
         <div className="mt-12 w-full max-w-xs z-10">
           <div className="flex justify-between items-end mb-2">
             <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-outline" />
+              <Activity className={`w-4 h-4 transition-colors ${isVerified ? 'text-lounge-gold' : 'text-outline'}`} />
               <div>
                 <p className="text-[10px] text-outline uppercase tracking-widest font-bold">Expertise Vector</p>
-                <p className="text-sm font-bold text-on-surface">Skill Match: {progress}%</p>
+                <p className="text-sm font-bold text-on-surface transition-colors">Skill Match: <span className={isVerified ? 'text-lounge-gold' : ''}>{progress}%</span></p>
               </div>
             </div>
             <p className="text-[10px] text-outline font-mono">99.9% CERTAINTY</p>
           </div>
-          <div className="h-1 w-full bg-outline-variant rounded-full overflow-hidden">
-            <div className="h-full bg-lounge-gold transition-all duration-300" style={{ width: `${progress}%` }}></div>
+          <div className="h-1 w-full bg-surface-container-high rounded-full overflow-hidden shadow-inner isolate">
+            <div className="h-full bg-lounge-gold transition-all duration-300 relative overflow-hidden" style={{ width: `${progress}%` }}>
+              {!isVerified && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent w-[200%] -translate-x-full animate-shimmer"></div>}
+            </div>
           </div>
         </div>
       </div>

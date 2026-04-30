@@ -751,15 +751,16 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                         className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${isSameUserAsPrev ? 'mt-1' : 'mt-6'}`}
                       >
                         <div className={`relative max-w-[80%] md:max-w-[65%] group`}>
-                          <div className={`px-5 py-3 shadow-md transition-all duration-300 ${
+                          <div className={`px-5 py-3 transition-all duration-300 relative overflow-hidden ${
                             isMe 
-                              ? 'bg-primary-container text-on-primary rounded-[24px_24px_4px_24px] shadow-primary-container/10' 
-                              : 'bg-surface-container border border-outline-variant/10 text-on-surface rounded-[24px_24px_24px_4px]'
+                              ? 'bg-[#0A1F15] border border-primary-container/40 text-[#E0F8EC] rounded-[24px_24px_4px_24px] shadow-[0_4px_15px_rgba(0,255,170,0.15)]' 
+                              : 'bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-[24px_24px_24px_4px] shadow-[0_2px_10px_rgba(0,0,0,0.2)]'
                           }`}>
-                            <p className="text-sm md:text-base leading-relaxed font-medium selection:bg-surface selection:text-primary-container break-words">{msg.text}</p>
+                            {isMe && <div className="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent pointer-events-none"></div>}
+                            <p className="text-sm md:text-base leading-relaxed font-medium selection:bg-surface selection:text-primary-container break-words relative z-10">{msg.text}</p>
                             
                             {msg.audioData && (
-                              <div className="mt-2 py-2 px-1">
+                              <div className="mt-2 py-2 px-1 relative z-10">
                                 <audio 
                                   src={msg.audioData} 
                                   controls 
@@ -768,16 +769,16 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                               </div>
                             )}
 
-                            <div className={`flex items-center justify-end gap-1.5 mt-1 transition-opacity duration-300 ${isSameUserAsPrev ? 'opacity-0 group-hover:opacity-100' : 'opacity-60'}`}>
+                            <div className={`flex items-center justify-end gap-1.5 mt-1.5 transition-opacity duration-300 relative z-10 ${isSameUserAsPrev ? 'opacity-0 group-hover:opacity-100' : 'opacity-70'}`}>
                               <span className="text-[9px] font-black tracking-widest uppercase">{msg.timestamp}</span>
                               {isMe && (
-                                <div className="flex items-center ml-1">
+                                <div className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
                                   {msg.status === 'read' ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-on-primary-container" />
+                                    <CheckCheck className="w-3.5 h-3.5 text-[#00E5FF] drop-shadow-[0_0_5px_rgba(0,229,255,0.6)]" />
                                   ) : msg.status === 'delivered' ? (
-                                    <CheckCheck className="w-3.5 h-3.5 opacity-50" />
+                                    <CheckCheck className="w-3.5 h-3.5 text-on-primary-container/80" />
                                   ) : (
-                                    <Check className="w-3.5 h-3.5 opacity-50" />
+                                    <Check className="w-3.5 h-3.5 text-on-primary-container/50" />
                                   )}
                                 </div>
                               )}
