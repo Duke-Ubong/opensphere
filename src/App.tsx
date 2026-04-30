@@ -701,6 +701,63 @@ export default function App() {
   const [isDMOpen, setIsDMOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<any[]>([]);
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      setTotalUnreadCount(0);
+      return;
+    }
+
+    const count = conversations.reduce((acc, conv) => {
+      return acc + (conv.unreadCounts?.[user.id] || 0);
+    }, 0);
+    
+    setTotalUnreadCount(count);
+
+    // Request notification permission
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [conversations, user]);
+
+  // Listen for new messages to trigger local notifications
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribeList = conversations.map(conv => {
+      const q = query(
+        collection(db, 'conversations', conv.id, 'messages'),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      return onSnapshot(q, (snapshot) => {
+        if (snapshot.empty) return;
+        const msg = snapshot.docs[0].data();
+        
+        // Only notify if:
+        // 1. Message is NOT from current user
+        // 2. Message is relatively new (within last 10 seconds to avoid burst on load)
+        // 3. Status is NOT 'read'
+        const isNew = msg.createdAt && (Date.now() - (msg.createdAt.seconds * 1000) < 10000);
+        if (msg.senderId !== user.id && msg.status !== 'read' && isNew) {
+          if (Notification.permission === 'granted') {
+            const otherParticipantId = conv.participants.find((p: string) => p !== user.id);
+            getDoc(doc(db, 'users', otherParticipantId)).then(userSnap => {
+              const senderName = userSnap.exists() ? userSnap.data().username : 'New Message';
+              new Notification(senderName, {
+                body: msg.text,
+                icon: userSnap.exists() ? userSnap.data().profileImage : '/favicon.ico'
+              });
+            });
+          }
+        }
+      });
+    });
+
+    return () => unsubscribeList.forEach(unsub => unsub());
+  }, [conversations.map(c => c.id).join(','), user?.id]);
 
   useEffect(() => {
     if (!user) {
@@ -743,7 +800,11 @@ export default function App() {
           participants: [user.id, otherUserId],
           updatedAt: Date.now(),
           lastMessage: '',
-          lastMessageAt: 0
+          lastMessageAt: 0,
+          unreadCounts: {
+            [user.id]: 0,
+            [otherUserId]: 0
+          }
         });
       }
       setActiveConversationId(convId);
@@ -911,7 +972,11 @@ export default function App() {
               title="Recent Conversations"
             >
               <Mail className="w-5 h-5" />
-              {conversations.length > 0 && <span className="absolute top-0 right-0 w-2 h-2 bg-primary-container rounded-full ring-2 ring-surface"></span>}
+              {totalUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-primary text-on-primary text-[10px] font-black flex items-center justify-center rounded-lg shadow-lg px-1 border-2 border-surface">
+                  {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                </span>
+              )}
             </button>
             <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-1 hover:text-primary-container transition-colors rounded-full hover:bg-surface-container-high focus:outline-none">
               {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -975,9 +1040,14 @@ export default function App() {
           </div>
         </button>
         
-        <button onClick={() => setCurrentView('messaging')} className={`p-2 transition-all flex flex-col items-center gap-1 bg-transparent border-none outline-none ${currentView === 'messaging' ? 'text-on-surface' : 'text-outline hover:text-on-surface'}`}>
+        <button onClick={() => setCurrentView('messaging')} className={`p-2 transition-all flex flex-col items-center gap-1 bg-transparent border-none outline-none relative ${currentView === 'messaging' ? 'text-on-surface' : 'text-outline hover:text-on-surface'}`}>
           <div className="relative flex flex-col items-center">
             <Mail className="w-6 h-6" fill={currentView === 'messaging' ? 'currentColor' : 'none'} />
+            {totalUnreadCount > 0 && (
+              <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] bg-primary text-on-primary text-[10px] font-black flex items-center justify-center rounded-lg shadow-lg px-1 border-2 border-surface">
+                {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+              </span>
+            )}
             {currentView === 'messaging' && <span className="absolute -bottom-[8px] w-1 h-1 rounded-full bg-on-surface"></span>}
           </div>
         </button>
@@ -1072,8 +1142,13 @@ export default function App() {
                 <Shield className="w-4 h-4" />
                 {!isSidebarCollapsed && <span className="font-label uppercase tracking-widest text-[10px]">The Lounge</span>}
               </button>
-              <button onClick={() => setCurrentView('messaging')} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded transition-all ${currentView === 'messaging' ? 'bg-primary-container/10 text-primary-container border border-primary-container/30' : 'text-secondary hover:bg-surface-container-high border border-transparent'}`}>
+              <button onClick={() => setCurrentView('messaging')} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded transition-all relative ${currentView === 'messaging' ? 'bg-primary-container/10 text-primary-container border border-primary-container/30' : 'text-secondary hover:bg-surface-container-high border border-transparent'}`}>
                 <MessageSquare className="w-4 h-4" />
+                {totalUnreadCount > 0 && (
+                  <span className={`absolute ${isSidebarCollapsed ? 'top-1 right-1' : 'right-4'} min-w-[16px] h-[16px] bg-primary text-on-primary text-[8px] font-black flex items-center justify-center rounded-md px-1`}>
+                    {totalUnreadCount}
+                  </span>
+                )}
                 {!isSidebarCollapsed && <span className="font-label uppercase tracking-widest text-[10px]">Messaging</span>}
               </button>
               <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded transition-all text-secondary hover:bg-surface-container-high border border-transparent`}>
@@ -1231,7 +1306,6 @@ export default function App() {
               <header className="mb-6 flex justify-between items-end">
                 <div>
                   <h2 className="font-headline text-2xl font-black text-primary tracking-tighter">FEED</h2>
-                  <p className="font-label text-xs text-primary-container tracking-widest uppercase">Unified Stream</p>
                 </div>
               </header>
 

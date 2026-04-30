@@ -10,6 +10,7 @@ interface Conversation {
   lastMessage: string;
   lastMessageAt: number;
   updatedAt: number;
+  unreadCounts?: { [userId: string]: number };
 }
 
 interface ArchiveSidebarProps {
@@ -94,6 +95,8 @@ const ArchiveItem: React.FC<{ conv: Conversation; currentUserId: string; isActiv
     }
   }, [conv, currentUserId]);
 
+  const unreadCount = conv.unreadCounts?.[currentUserId] || 0;
+
   return (
     <div 
       onClick={onClick}
@@ -113,7 +116,13 @@ const ArchiveItem: React.FC<{ conv: Conversation; currentUserId: string; isActiv
             </div>
           )}
         </div>
-        <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-primary-container rounded-full border-2 border-surface"></div>
+        {unreadCount > 0 ? (
+          <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-primary text-on-primary text-[9px] font-black flex items-center justify-center rounded-lg shadow-lg px-1 border border-surface">
+            {unreadCount}
+          </div>
+        ) : (
+          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-primary-container rounded-full border-2 border-surface"></div>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">

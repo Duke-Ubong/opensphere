@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, query, where, orderBy, onSnapshot, 
   addDoc, serverTimestamp, getDocs, doc, getDoc, 
-  updateDoc, limit, setDoc 
+  updateDoc, limit, setDoc, increment 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ interface ChatMessage {
   text: string;
   timestamp: any;
   status: 'sent' | 'delivered' | 'read';
+  audioData?: string;
 }
 
 interface Chat {
@@ -38,6 +39,7 @@ interface Chat {
   isGroup?: boolean;
   participants: string[];
   lastMessageAt?: any;
+  unreadCounts?: { [userId: string]: number };
 }
 
 interface MessagingViewProps {
@@ -61,6 +63,10 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
   const [isLoading, setIsLoading] = useState(true);
   const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [otherUserTyping, setOtherUserTyping] = useState<boolean>(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -139,16 +145,17 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
           }
         }
 
-        chatList.push({
-          id: docSnapshot.id,
-          name: otherUser?.username || 'Gigs User',
-          avatar: otherUser?.profileImage || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
-          lastMessage: data.lastMessage || 'No messages yet',
-          time: data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-          unreadCount: 0, // Placeholder
-          participants: data.participants,
-          lastMessageAt: data.updatedAt
-        });
+          chatList.push({
+            id: docSnapshot.id,
+            name: otherUser?.username || 'Gigs User',
+            avatar: otherUser?.profileImage || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
+            lastMessage: data.lastMessage || 'No messages yet',
+            time: data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            unreadCount: data.unreadCounts?.[currentUser.id] || 0,
+            participants: data.participants,
+            lastMessageAt: data.updatedAt,
+            unreadCounts: data.unreadCounts
+          });
       }
       
       setChats(chatList);
@@ -183,10 +190,29 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
           senderId: data.senderId,
           text: data.text,
           timestamp: data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-          status: 'read' // Default to read for now
+          status: data.status || 'sent'
         };
       });
       setActiveMessages(msgs);
+
+      // Mark messages as read when they arrive and chat is active
+      if (selectedChatId && currentUser?.id) {
+        // Reset unread count for current user
+        const convRef = doc(db, 'conversations', selectedChatId);
+        updateDoc(convRef, {
+          [`unreadCounts.${currentUser.id}`]: 0
+        }).catch(err => console.error("Error resetting unread count:", err));
+
+        // Mark incoming messages from other user as read
+        snapshot.docs.forEach(d => {
+          const data = d.data();
+          if (data.senderId !== currentUser.id && data.status !== 'read') {
+            updateDoc(doc(db, 'conversations', selectedChatId, 'messages', d.id), {
+              status: 'read'
+            }).catch(err => console.error("Error marking message as read:", err));
+          }
+        });
+      }
     }, (error) => {
       console.error("Error fetching messages:", error);
     });
@@ -300,17 +326,20 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
     }
 
     try {
+      const otherUserId = selectedChatOtherUser.id;
       const messageRef = collection(db, 'conversations', selectedChatId, 'messages');
       await addDoc(messageRef, {
         senderId: currentUser.id,
         text: messageText,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        status: 'sent'
       });
 
       const convRef = doc(db, 'conversations', selectedChatId);
       await updateDoc(convRef, {
         lastMessage: messageText,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        [`unreadCounts.${otherUserId}`]: increment(1)
       });
     } catch (error) {
       console.error("Error sending message:", error);
@@ -326,14 +355,94 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
     }
   };
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (isRecording) {
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
       setIsRecording(false);
-      handleSendMessage({ preventDefault: () => {} } as React.FormEvent, '🎤 Voice note (0:12s)');
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+      setRecordingDuration(0);
     } else {
-      setIsRecording(true);
-      toast.info('Recording started. Tap square to send.', { duration: 2000 });
+      // Start recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+          const durationFormatted = formatDuration(recordingDuration);
+          
+          // Convert Blob to base64
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = async () => {
+            const base64Audio = reader.result as string;
+            
+            // Check size (Firestore 1MB limit)
+            if (base64Audio.length > 800000) {
+              toast.error("Voice note too long. Limit to ~30 seconds.");
+              return;
+            }
+
+            try {
+              const otherUserId = selectedChatOtherUser.id;
+              const messageRef = collection(db, 'conversations', selectedChatId, 'messages');
+              await addDoc(messageRef, {
+                senderId: currentUser.id,
+                text: `🎤 Voice note (${durationFormatted})`,
+                audioData: base64Audio,
+                createdAt: serverTimestamp(),
+                status: 'sent'
+              });
+
+              const convRef = doc(db, 'conversations', selectedChatId);
+              await updateDoc(convRef, {
+                lastMessage: `🎤 Voice note (${durationFormatted})`,
+                updatedAt: Date.now(),
+                [`unreadCounts.${otherUserId}`]: increment(1)
+              });
+              
+              toast.success('Voice note sent');
+            } catch (err) {
+              console.error('Error sending audio message:', err);
+              toast.error('Failed to send voice note');
+            }
+          };
+          
+          // Cleanup tracks
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        setRecordingDuration(0);
+        recordingIntervalRef.current = setInterval(() => {
+          setRecordingDuration(prev => prev + 1);
+        }, 1000);
+        
+        toast.info('Recording started...', { duration: 2000 });
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        toast.error('Could not access microphone');
+      }
     }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}:${sec.toString().padStart(2, '0')}`;
   };
 
   const startNewChat = async (otherUser: any) => {
@@ -348,13 +457,24 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
     }
 
     try {
-      const convRef = await addDoc(collection(db, 'conversations'), {
-        participants: [currentUser.id, otherUser.id],
-        lastMessage: '',
-        updatedAt: Date.now(),
-        createdAt: serverTimestamp()
-      });
-      setSelectedChatId(convRef.id);
+      const convId = [currentUser.id, otherUser.id].sort().join('_');
+      const convRef = doc(db, 'conversations', convId);
+      const convSnap = await getDoc(convRef);
+      
+      if (!convSnap.exists()) {
+        await setDoc(convRef, {
+          id: convId,
+          participants: [currentUser.id, otherUser.id],
+          updatedAt: Date.now(),
+          lastMessage: '',
+          lastMessageAt: 0,
+          unreadCounts: {
+            [currentUser.id]: 0,
+            [otherUser.id]: 0
+          }
+        });
+      }
+      setSelectedChatId(convId);
       setSearchQuery('');
     } catch (error) {
       console.error("Error starting chat:", error);
@@ -557,11 +677,11 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                     </h2>
                     <div className="flex items-center gap-1.5 h-3">
                       {otherUserTyping ? (
-                        <div className="flex items-center gap-1 truncate">
+                        <div className="flex items-center gap-1 truncate text-primary-container">
                           <span className="flex gap-0.5 shrink-0">
-                            <span className="w-1 h-1 bg-primary-container rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                            <span className="w-1 h-1 bg-primary-container rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                            <span className="w-1 h-1 bg-primary-container rounded-full animate-bounce"></span>
+                            <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                            <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                            <span className="w-1 h-1 bg-current rounded-full animate-bounce"></span>
                           </span>
                           <p className="text-[8px] text-primary-container font-black uppercase tracking-[0.1em] truncate">Typing...</p>
                         </div>
@@ -637,9 +757,30 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                               : 'bg-surface-container border border-outline-variant/10 text-on-surface rounded-[24px_24px_24px_4px]'
                           }`}>
                             <p className="text-sm md:text-base leading-relaxed font-medium selection:bg-surface selection:text-primary-container break-words">{msg.text}</p>
-                            <div className={`flex items-center justify-end gap-2 mt-2 transition-opacity duration-300 ${isSameUserAsPrev ? 'opacity-0 group-hover:opacity-100' : 'opacity-60'}`}>
+                            
+                            {msg.audioData && (
+                              <div className="mt-2 py-2 px-1">
+                                <audio 
+                                  src={msg.audioData} 
+                                  controls 
+                                  className={`h-8 w-full max-w-[240px] opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'invert' : ''}`} 
+                                />
+                              </div>
+                            )}
+
+                            <div className={`flex items-center justify-end gap-1.5 mt-1 transition-opacity duration-300 ${isSameUserAsPrev ? 'opacity-0 group-hover:opacity-100' : 'opacity-60'}`}>
                               <span className="text-[9px] font-black tracking-widest uppercase">{msg.timestamp}</span>
-                              {isMe && <CheckCheck className="w-3.5 h-3.5 text-primary-container" />}
+                              {isMe && (
+                                <div className="flex items-center ml-1">
+                                  {msg.status === 'read' ? (
+                                    <CheckCheck className="w-3.5 h-3.5 text-on-primary-container" />
+                                  ) : msg.status === 'delivered' ? (
+                                    <CheckCheck className="w-3.5 h-3.5 opacity-50" />
+                                  ) : (
+                                    <Check className="w-3.5 h-3.5 opacity-50" />
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -651,7 +792,7 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
               </div>
 
               {/* Message Input Area */}
-              <div className="px-3 py-3 md:px-6 md:py-6 bg-surface border-t border-outline-variant/10 w-full min-h-[80px]">
+              <div className="px-3 py-3 md:px-6 md:py-6 bg-surface border-t border-outline-variant/10 w-full min-h-[80px] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <form onSubmit={handleSendMessage} className="flex items-center gap-3 max-w-6xl mx-auto w-full">
                   {/* The Capsule */}
                   <div 
@@ -718,7 +859,16 @@ const MessagingView: React.FC<MessagingViewProps> = ({ currentUser, onNavigateTo
                   </div>
 
                   {/* Send/Mic Circular Button */}
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex items-center gap-2">
+                    {isRecording && (
+                      <motion.span 
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="text-xs font-mono font-black text-error animate-pulse hidden sm:inline-block"
+                      >
+                        {formatDuration(recordingDuration)}
+                      </motion.span>
+                    )}
                     {newMessage.trim() ? (
                       <motion.button 
                         initial={{ scale: 0.8, opacity: 0 }} 

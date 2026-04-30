@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, User, MessageSquare, ChevronLeft, Smile, Paperclip, Camera, Mic, Phone, Video } from 'lucide-react';
+import { X, Send, User, MessageSquare, ChevronLeft, Smile, Paperclip, Camera, Mic, Phone, Video, Check, CheckCheck, Square } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, getDoc, increment } from 'firebase/firestore';
 import { toast } from 'sonner';
 import EmojiPicker, { Theme, EmojiClickData } from 'emoji-picker-react';
 import { CallSignals } from './CallManager';
@@ -12,6 +12,8 @@ interface Message {
   senderId: string;
   text: string;
   createdAt: any;
+  status?: 'sent' | 'delivered' | 'read';
+  audioData?: string;
 }
 
 interface Conversation {
@@ -20,6 +22,7 @@ interface Conversation {
   lastMessage: string;
   lastMessageAt: number;
   updatedAt: number;
+  unreadCounts?: { [userId: string]: number };
 }
 
 interface DirectMessagesProps {
@@ -41,6 +44,11 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [otherUser, setOtherUser] = useState<any>(null);
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [otherUserTyping, setOtherUserTyping] = useState<boolean>(false);
@@ -64,6 +72,25 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)));
+
+      // Mark messages as read when they arrive and drawer is active
+      if (activeConversationId && currentUser?.id) {
+        // Reset unread count for current user
+        const convRef = doc(db, 'conversations', activeConversationId);
+        updateDoc(convRef, {
+          [`unreadCounts.${currentUser.id}`]: 0
+        }).catch(err => console.error("Error resetting unread count:", err));
+
+        // Mark incoming messages from other user as read
+        snapshot.docs.forEach(d => {
+          const data = d.data();
+          if (data.senderId !== currentUser.id && data.status !== 'read') {
+            updateDoc(doc(db, 'conversations', activeConversationId, 'messages', d.id), {
+              status: 'read'
+            }).catch(err => console.error("Error marking message as read:", err));
+          }
+        });
+      }
     }, (error) => {
       console.error("Error fetching messages:", error);
     });
@@ -173,20 +200,103 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     try {
+      const otherId = otherUser?.id;
       await addDoc(collection(db, 'conversations', activeConversationId, 'messages'), {
         senderId: currentUser?.id,
         text,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        status: 'sent'
       });
 
       await updateDoc(doc(db, 'conversations', activeConversationId), {
         lastMessage: text,
         lastMessageAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        [`unreadCounts.${otherId}`]: (conversations.find(c => c.id === activeConversationId)?.unreadCounts?.[otherId] || 0) + 1
       });
     } catch (error) {
       console.error(error);
       toast.error('Failed to send message');
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecording(false);
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+      setRecordingDuration(0);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+          const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+          const durationFormatted = formatDuration(recordingDuration);
+          
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = async () => {
+            const base64Audio = reader.result as string;
+            if (base64Audio.length > 800000) {
+              toast.error("Voice note too long.");
+              return;
+            }
+
+            try {
+              const otherId = otherUser?.id;
+              if (!activeConversationId || !otherId) return;
+
+              await addDoc(collection(db, 'conversations', activeConversationId, 'messages'), {
+                senderId: currentUser?.id,
+                text: `🎤 Voice note (${durationFormatted})`,
+                audioData: base64Audio,
+                createdAt: serverTimestamp(),
+                status: 'sent'
+              });
+
+              await updateDoc(doc(db, 'conversations', activeConversationId), {
+                lastMessage: `🎤 Voice note (${durationFormatted})`,
+                lastMessageAt: Date.now(),
+                updatedAt: Date.now(),
+                [`unreadCounts.${otherId}`]: increment(1)
+              });
+              
+              toast.success('Voice note sent');
+            } catch (err) {
+              console.error(err);
+              toast.error('Failed to send voice note');
+            }
+          };
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        setRecordingDuration(0);
+        recordingIntervalRef.current = setInterval(() => {
+          setRecordingDuration(prev => prev + 1);
+        }, 1000);
+      } catch (err) {
+        console.error(err);
+        toast.error('Could not access microphone');
+      }
     }
   };
 
@@ -195,12 +305,13 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
   return (
     <AnimatePresence>
       <motion.div 
-        initial={{ opacity: 0, x: 300 }}
+        initial={{ opacity: 0, x: '100%' }}
         animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 300 }}
-        className="fixed right-0 top-0 h-full w-full sm:w-[400px] bg-[#1C1B1B] border-l border-[#3A4A40]/30 z-[60] shadow-2xl flex flex-col"
+        exit={{ opacity: 0, x: '100%' }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="fixed top-0 right-0 sm:left-auto h-[100dvh] w-full sm:w-[400px] bg-[#1C1B1B] sm:border-l border-[#3A4A40]/30 z-[100] shadow-2xl flex flex-col"
       >
-        <div className="px-4 py-3 border-b border-[#3A4A40]/20 flex items-center justify-between bg-[#141414] gap-2">
+        <div className="px-3 md:px-4 py-3 border-b border-[#3A4A40]/20 flex items-center justify-between bg-[#141414] gap-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="flex items-center gap-2 min-w-0">
             {activeConversationId && (
               <button onClick={() => setActiveConversationId(null)} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors shrink-0">
@@ -289,12 +400,30 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
                         </div>
                       )
                     )}
-                    <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words ${
+                    <div className={`max-w-[80%] p-3 rounded-2xl text-sm break-words relative overflow-hidden ${
                       isMe 
                         ? 'bg-primary-container text-on-primary-container rounded-tr-none' 
                         : 'bg-surface-container-highest text-on-surface rounded-tl-none'
                     }`}>
                       {msg.text}
+                      {msg.audioData && (
+                        <div className="mt-2 py-1">
+                          <audio 
+                            src={msg.audioData} 
+                            controls 
+                            className={`h-7 w-full max-w-[200px] opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'invert' : ''}`} 
+                          />
+                        </div>
+                      )}
+                      {isMe && (
+                        <div className="flex justify-end mt-1 text-[8px] opacity-70">
+                          {msg.status === 'read' ? (
+                            <CheckCheck className="w-3 h-3 text-on-primary-container" />
+                          ) : (
+                            <Check className="w-3 h-3" />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -304,7 +433,7 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
         </div>
 
         {activeConversationId && (
-          <div className="px-3 py-3 border-t border-[#3A4A40]/20 bg-[#141414]">
+          <div className="px-3 py-3 border-t border-[#3A4A40]/20 bg-[#141414] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <form onSubmit={handleSendMessage} className="flex items-center gap-2 max-w-xl mx-auto">
               <div className="flex-1 flex items-center bg-surface-container-high border border-outline-variant/10 rounded-full px-2 py-1 shadow-inner relative">
                 {showEmojiPicker && (
@@ -346,7 +475,16 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
                   )}
                 </div>
               </div>
-              <div className="shrink-0">
+              <div className="shrink-0 flex items-center gap-2">
+                {isRecording && (
+                  <motion.span 
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-[10px] font-mono font-bold text-error animate-pulse"
+                  >
+                    {formatDuration(recordingDuration)}
+                  </motion.span>
+                )}
                 {newMessage.trim() ? (
                   <button 
                     type="submit" 
@@ -357,9 +495,12 @@ const DirectMessages: React.FC<DirectMessagesProps> = ({
                 ) : (
                   <button 
                     type="button"
-                    className="w-10 h-10 bg-primary-container text-on-primary rounded-full flex items-center justify-center shadow-md hover:brightness-110 active:scale-95 transition-all"
+                    onClick={toggleRecording}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md active:scale-95 transition-all ${
+                      isRecording ? 'bg-error text-white animate-pulse' : 'bg-primary-container text-on-primary hover:brightness-110'
+                    }`}
                   >
-                    <Mic className="w-4.5 h-4.5" />
+                    {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-4.5 h-4.5" />}
                   </button>
                 )}
               </div>
@@ -379,6 +520,7 @@ interface ConversationItemProps {
 
 const ConversationItem: React.FC<ConversationItemProps> = ({ conv, currentUserId, onClick }) => {
   const [otherUser, setOtherUser] = useState<any>(null);
+  const unreadCount = conv.unreadCounts?.[currentUserId] || 0;
 
   useEffect(() => {
     const otherId = conv.participants.find(p => p !== currentUserId);
@@ -392,22 +534,35 @@ const ConversationItem: React.FC<ConversationItemProps> = ({ conv, currentUserId
   return (
     <div 
       onClick={onClick}
-      className="p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all border border-transparent hover:border-[#3A4A40]/20 group"
+      className="p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all border border-transparent hover:border-[#3A4A40]/20 group relative"
     >
       <div className="flex items-center gap-3">
-        {otherUser?.profileImage ? (
-          <img src={otherUser.profileImage} alt={otherUser.username} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-        ) : (
-          <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 group-hover:bg-primary-container/10 transition-colors">
-            <User className="w-5 h-5 text-outline group-hover:text-primary-container" />
-          </div>
-        )}
+        <div className="relative shrink-0">
+          {otherUser?.profileImage ? (
+            <img src={otherUser.profileImage} alt={otherUser.username} className="w-10 h-10 rounded-lg object-cover" />
+          ) : (
+            <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center group-hover:bg-primary-container/10 transition-colors">
+              <User className="w-5 h-5 text-outline group-hover:text-primary-container" />
+            </div>
+          )}
+          {unreadCount > 0 && (
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-on-primary text-[8px] font-black flex items-center justify-center rounded-md animate-pulse">
+              {unreadCount}
+            </div>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-center mb-0.5">
-            <h4 className="font-bold text-on-surface text-sm truncate">{otherUser?.username || 'Loading...'}</h4>
-            <span className="text-[10px] text-outline font-mono">{conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+            <h4 className={`font-bold text-sm truncate ${unreadCount > 0 ? 'text-primary' : 'text-on-surface'}`}>
+              {otherUser?.username || 'Loading...'}
+            </h4>
+            <span className={`text-[10px] font-mono ${unreadCount > 0 ? 'text-primary' : 'text-outline'}`}>
+              {conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+            </span>
           </div>
-          <p className="text-xs text-outline truncate opacity-70">{conv.lastMessage || 'Start a conversation'}</p>
+          <p className={`text-xs truncate ${unreadCount > 0 ? 'text-on-surface font-bold' : 'text-outline opacity-70'}`}>
+            {conv.lastMessage || 'Start a conversation'}
+          </p>
         </div>
       </div>
     </div>
